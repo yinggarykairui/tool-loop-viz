@@ -735,10 +735,13 @@ function formatTime(ms) {
 }
 
 function formatDuration(ms) {
-  if (ms < 1000) return ms + ' ms';
+  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return '';
+  if (ms < 1000) return Math.round(ms) + ' ms';
   if (ms < 60000) return (ms / 1000).toFixed(1) + ' s';
-  var mins = Math.floor(ms / 60000);
-  return mins + ' m ' + Math.round((ms % 60000) / 1000) + ' s';
+  var totalSec = Math.round(ms / 1000);
+  var mins = Math.floor(totalSec / 60);
+  if (mins < 60) return mins + ' min ' + (totalSec % 60) + ' s';
+  return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
 }
 
 /* Renders a value into a slot. Clamping is added in a later pass, once the slot
@@ -755,9 +758,14 @@ function appendValue(parent, value, emptyLabel) {
   slot.appendChild(body);
   slot.appendChild(el('div', 'value-fade'));
   if (shown.truncated) {
-    var note = 'Value clipped at ' + LIMITS.value.toLocaleString() + ' characters';
-    if (shown.fullLength) note += ' of ' + shown.fullLength.toLocaleString();
-    slot.appendChild(el('p', 'note', note + '.'));
+    // Stated as what was loaded, not as what is on screen: the old wording
+    // claimed a clip after the reader had opened the value, which read as a lie.
+    slot.dataset.clipped = 'true';
+    slot.appendChild(el('p', 'note', shown.fullLength ?
+      'Only the first ' + LIMITS.value.toLocaleString() + ' characters of ' +
+        shown.fullLength.toLocaleString() + ' were loaded; the rest is not on this page.' :
+      'This value was too large to render whole: about ' + LIMITS.value.toLocaleString() +
+        ' characters of it were loaded, and the parts left out are marked in place.'));
   }
   parent.appendChild(slot);
 }
@@ -789,6 +797,16 @@ function buildOption(step) {
   var head = el('div', 'step-head');
   head.appendChild(el('span', 'step-index', String(step.index + 1)));
   head.appendChild(el('span', 'step-kind', KIND_LABEL[step.kind] || 'Step'));
+  // A failure is marked in words as well as in colour: the two hues used to
+  // differ in hue alone, at 10.88px, at near-identical luminance.
+  if (step.isError) head.appendChild(el('span', 'step-flag', 'failed'));
+  // The pairing is the loop. Showing it in the list means the reader can see
+  // which result belongs to which call without opening either of them.
+  if (step.pairIndex >= 0) {
+    var tag = el('span', 'step-pair', (step.kind === 'tool-call' ? '→ ' : '← ') + (step.pairIndex + 1));
+    tag.title = (step.kind === 'tool-call' ? 'Its result is step ' : 'Its call is step ') + (step.pairIndex + 1);
+    head.appendChild(tag);
+  }
   li.appendChild(head);
   li.appendChild(el('span', 'step-title', step.title));
 
@@ -811,7 +829,12 @@ function renderDetail() {
 
   var meta = ['Step ' + (step.index + 1) + ' of ' + state.steps.length];
   if (step.toolId) meta.push('id ' + firstLine(step.toolId, 60));
-  if (step.timestamp !== null) meta.push(formatTime(step.timestamp));
+  // Only parts that have something to say: an unreadable timestamp used to
+  // leave the line ending in a separator and nothing after it.
+  if (step.timestamp !== null) {
+    var stamp = formatTime(step.timestamp);
+    if (stamp) meta.push(stamp);
+  }
   els.detail.appendChild(el('p', 'detail-meta', meta.join('  ·  ')));
 
   if (step.isError) els.detail.appendChild(el('span', 'error-flag', 'error result'));
@@ -832,9 +855,14 @@ function renderDetail() {
   if (step.pairIndex >= 0) {
     var other = state.steps[step.pairIndex];
     section(step.kind === 'tool-call' ? 'Result' : 'Call', function (body) {
+      if (other.index >= state.rendered) {
+        body.appendChild(el('p', 'note', (step.kind === 'tool-call' ? 'The result is step ' : 'The call is step ') +
+          (other.index + 1) + ', which is past the ' + state.rendered + ' steps listed here.'));
+        return;
+      }
       var link = el('button', 'link', (step.kind === 'tool-call' ? 'Go to result at step ' : 'Go to call at step ') + (other.index + 1));
       link.type = 'button';
-      link.addEventListener('click', function () { select(other.index, true); });
+      link.addEventListener('click', function () { select(other.index, true, true); });
       body.appendChild(link);
     });
   } else if (step.kind === 'tool-call') {
@@ -1050,15 +1078,21 @@ function clampSlots() {
 }
 
 function addToggle(slot) {
-  var toggle = el('button', 'link value-toggle', 'Show the whole value');
+  // "The whole value" is only honest when the whole value is here; when the
+  // parser had to stop, the control offers the text that was loaded.
+  var openLabel = slot.dataset.clipped === 'true' ? 'Show the loaded text' : 'Show the whole value';
+  var toggle = el('button', 'link value-toggle', openLabel);
   toggle.type = 'button';
   toggle.setAttribute('aria-expanded', 'false');
   toggle.addEventListener('click', function () {
     var open = slot.dataset.expanded === 'true';
     slot.dataset.expanded = open ? 'false' : 'true';
     slot.classList.toggle('clamped', open);
+    // Open means a taller, scrollable region — not a value that runs on for
+    // 29,000 pixels with its only control at the bottom.
+    slot.classList.toggle('expanded', !open);
     toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
-    toggle.textContent = open ? 'Show the whole value' : 'Show less';
+    toggle.textContent = open ? openLabel : 'Show less';
   });
   slot.appendChild(toggle);
   return toggle;
@@ -1072,16 +1106,27 @@ window.addEventListener('resize', function () {
 
 /* --------------------------------------------------------------- summary ---- */
 
+// Names are listed up to this many; the count is never capped.
+var TOOL_LIST_MAX = 40;
+
 function summarise(steps) {
   var tools = [];
-  var calls = 0, errors = 0, first = null, last = null;
+  var seen = Object.create(null);
+  var distinct = 0;
+  var calls = 0, errors = 0, first = null, last = null, firstError = -1;
   for (var i = 0; i < steps.length; i++) {
     var step = steps[i];
     if (step.kind === 'tool-call') {
       calls++;
-      if (step.toolName && tools.indexOf(step.toolName) === -1 && tools.length < 40) tools.push(step.toolName);
+      var name = step.toolName;
+      // A call whose name the log did not carry is not a distinct tool.
+      if (name && name !== '(unnamed tool)' && seen[name] === undefined) {
+        seen[name] = true;
+        distinct++;
+        if (tools.length < TOOL_LIST_MAX) tools.push(name);
+      }
     }
-    if (step.isError) errors++;
+    if (step.isError) { errors++; if (firstError < 0) firstError = i; }
     if (step.timestamp !== null) {
       if (first === null || step.timestamp < first) first = step.timestamp;
       if (last === null || step.timestamp > last) last = step.timestamp;
@@ -1091,7 +1136,9 @@ function summarise(steps) {
     steps: steps.length,
     calls: calls,
     errors: errors,
+    firstError: firstError,
     tools: tools,
+    distinct: distinct,
     // Elapsed is reported only when the log itself carries usable timestamps.
     elapsed: (first !== null && last !== null && last > first) ? last - first : null
   };
@@ -1103,16 +1150,39 @@ function renderSummary() {
   var s = summarise(state.steps);
   metric('Steps', String(s.steps));
   metric('Tool calls', String(s.calls));
-  metric('Errors', String(s.errors));
-  metric('Distinct tools', String(s.tools.length));
-  if (s.tools.length) metric('Tools used', firstLine(s.tools.join(', '), 90));
-  if (s.elapsed !== null) metric('Elapsed', formatDuration(s.elapsed));
+  if (s.errors > 0 && s.firstError >= 0) {
+    // The count is the way to the failure it counts.
+    var wrap = el('div', 'metric');
+    wrap.appendChild(el('span', 'metric-label', 'Errors'));
+    var link = el('button', 'link metric-value', String(s.errors));
+    link.type = 'button';
+    link.title = 'Go to the first error, step ' + (s.firstError + 1);
+    link.addEventListener('click', function () { select(s.firstError, true, true); });
+    wrap.appendChild(link);
+    els.summary.appendChild(wrap);
+  } else {
+    metric('Errors', String(s.errors));
+  }
+  metric('Distinct tools', String(s.distinct));
+  if (s.tools.length) {
+    // Every name that is listed is listed in full; a list too long to show says
+    // how many it is not showing, rather than ending mid-identifier.
+    var names = s.tools.join(', ');
+    if (s.distinct > s.tools.length) names += ', and ' + (s.distinct - s.tools.length) + ' more';
+    metric('Tools used', names, names);
+  }
+  if (s.elapsed !== null) {
+    var elapsed = formatDuration(s.elapsed);
+    if (elapsed) metric('Elapsed', elapsed);
+  }
   metric('Format', state.dialect);
 
-  function metric(label, value) {
+  function metric(label, value, title) {
     var wrap = el('div', 'metric');
     wrap.appendChild(el('span', 'metric-label', label));
-    wrap.appendChild(el('span', 'metric-value', value));
+    var node = el('span', 'metric-value', value);
+    if (title) node.title = title;
+    wrap.appendChild(node);
     els.summary.appendChild(wrap);
   }
 }

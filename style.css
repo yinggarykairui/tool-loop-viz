@@ -231,8 +231,30 @@ button.link {
   text-overflow: ellipsis;
 }
 
+/* A failure is named, not only tinted. */
+.step-flag {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  padding: 0 0.25rem;
+}
+
+/* The call/result pairing, visible in the list itself. */
+.step-pair {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .kind-user .step-kind { color: var(--kind-user); }
 .kind-thought .step-kind { color: var(--kind-thought); }
+.kind-thinking .step-kind { color: var(--kind-thought); font-style: italic; }
 .kind-tool-call .step-kind { color: var(--kind-call); }
 .kind-tool-result .step-kind { color: var(--kind-result); }
 .kind-final .step-kind { color: var(--kind-final); }
@@ -283,6 +305,15 @@ button.link {
   pointer-events: none;
 }
 .value-slot.clamped .value-fade { display: block; }
+/* Open is a taller region that scrolls itself, not a value that runs on for
+   thousands of pixels with its only control at the far end. */
+.value-slot.expanded .value-body {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+}
 .value-body { position: relative; min-width: 0; }
 
 pre.value, p.value {
