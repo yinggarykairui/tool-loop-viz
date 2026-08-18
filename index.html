@@ -20,16 +20,17 @@
   <section class="input-panel">
     <label class="field-label" for="input">Transcript JSON</label>
     <textarea id="input" spellcheck="false" autocapitalize="off" autocomplete="off"
-      placeholder="Anthropic messages, OpenAI chat messages, or a flat list of steps."></textarea>
+      placeholder="Paste a transcript here — Anthropic messages, OpenAI chat messages, or a flat list of steps."></textarea>
     <div class="controls">
       <button type="button" id="render-btn">Render</button>
       <button type="button" id="example-btn" class="ghost">Load example</button>
-      <span class="hint">Drop a .json file anywhere on the page. Ctrl or Cmd + Enter renders.</span>
+      <span class="hint">Arrow keys, Home and End walk the timeline. Drop a .json file anywhere on the page. Ctrl or Cmd + Enter renders.</span>
     </div>
     <p class="status" id="status" role="status"></p>
   </section>
 
   <section class="summary" id="summary" aria-label="Run summary"></section>
+  <div class="run-notes" id="run-notes" hidden></div>
 
   <div class="panes">
     <section class="pane">

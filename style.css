@@ -178,6 +178,10 @@ button.link {
 .summary .metric-label { color: var(--ink-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .summary .metric { display: flex; flex-direction: column; min-width: 0; }
 
+.run-notes { margin-top: 0.75rem; }
+.run-notes[hidden] { display: none; }
+.run-notes .note { margin: 0.25rem 0 0; }
+
 /* Continuous layout: one column until the container can hold two 20rem tracks,
    then two. No hand-picked breakpoint to be wrong about. */
 .panes {

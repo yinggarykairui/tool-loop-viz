@@ -699,7 +699,8 @@ function describeType(v) {
 /* Everything below builds DOM nodes by hand. Transcript text reaches the page
    only through textContent, so hostile markup in a log is inert. */
 
-var state = { steps: [], selected: 0, rendered: 0, dialect: '' };
+var state = { steps: [], selected: 0, rendered: 0, dialect: '', isExample: false };
+var nextIsExample = false;
 
 var els = {
   input: document.getElementById('input'),
@@ -708,6 +709,7 @@ var els = {
   timeline: document.getElementById('timeline'),
   timelineNote: document.getElementById('timeline-note'),
   detail: document.getElementById('detail'),
+  runNotes: document.getElementById('run-notes'),
   dropVeil: document.getElementById('drop-veil'),
   renderBtn: document.getElementById('render-btn'),
   exampleBtn: document.getElementById('example-btn')
@@ -790,7 +792,7 @@ function buildOption(step) {
   li.appendChild(head);
   li.appendChild(el('span', 'step-title', step.title));
 
-  li.addEventListener('click', function () { select(step.index, true); });
+  li.addEventListener('click', function () { select(step.index, true, true); });
   return li;
 }
 
@@ -856,12 +858,40 @@ function renderDetail() {
   clampSlots();
 }
 
-function select(index, moveFocus) {
+/* Keeps a row visible by scrolling the list itself. scrollIntoView scrolls the
+   window as well, so the opening selection used to push the title and the one
+   explanatory line off the top of a phone screen before anyone had read them. */
+function revealInList(node) {
+  var list = els.timeline;
+  if (list.scrollHeight <= list.clientHeight) return;
+  var r = node.getBoundingClientRect();
+  var lr = list.getBoundingClientRect();
+  if (r.top < lr.top) list.scrollTop += r.top - lr.top;
+  else if (r.bottom > lr.bottom) list.scrollTop += r.bottom - lr.bottom;
+}
+
+function isNarrow() { return window.matchMedia('(max-width: 46rem)').matches; }
+
+/* On one column the detail pane sits below the whole list, so a tap changed
+   something the reader could not see. Bring it to them. */
+function revealDetail() {
+  var top = els.detail.getBoundingClientRect().top + window.pageYOffset - 12;
+  if (top < 0) top = 0;
+  window.scrollTo({ top: top, behavior: 'smooth' });
+}
+
+function select(index, moveFocus, reveal) {
   if (!state.steps.length) return;
   // Selection is bounded by what is actually listed: beyond LIMITS.steps there
-  // is no option to focus.
+  // is no option to focus. Asking for one says so rather than landing silently
+  // on the wrong step.
   var last = Math.max(0, Math.min(state.rendered, state.steps.length) - 1);
-  var next = Math.max(0, Math.min(index, last));
+  if (index > last) {
+    setStatus('Step ' + (index + 1) + ' is past the ' + (last + 1) +
+      ' steps listed here, so it cannot be opened.', true);
+    return;
+  }
+  var next = Math.max(0, index);
   state.selected = next;
   var options = els.timeline.children;
   for (var i = 0; i < options.length; i++) {
@@ -871,10 +901,11 @@ function select(index, moveFocus) {
   }
   var current = options[next];
   if (current) {
-    current.scrollIntoView({ block: 'nearest' });
-    if (moveFocus) current.focus();
+    revealInList(current);
+    if (moveFocus) current.focus({ preventScroll: true });
   }
   renderDetail();
+  if (reveal && isNarrow()) revealDetail();
 }
 
 function showRun(result, note) {
@@ -883,14 +914,18 @@ function showRun(result, note) {
   state.selected = 0;
   renderTimeline();
   renderSummary();
+  renderRunNotes(result);
   select(0, false);
   setStatus(note || (result.steps.length + ' steps from a ' + result.dialect + ' transcript.'), false);
 }
 
 // A failed parse must never wipe a run that is already on screen.
 function runLoad(raw, label, extra) {
+  var wasExample = nextIsExample;
+  nextIsExample = false;
   try {
     var result = parseTranscript(raw);
+    state.isExample = wasExample;
     var count = result.steps.length;
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
       ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''));
@@ -941,8 +976,23 @@ els.input.addEventListener('keydown', function (event) {
 });
 
 /* Listbox keys. Selection follows focus, which is the pattern a single-select
-   listbox is expected to use. */
-els.timeline.addEventListener('keydown', function (event) {
+   listbox is expected to use.
+
+   Bound on the document, not on the list: on a cold load the active element is
+   the body, so keys advertised on the page did nothing until you clicked a row
+   or tabbed three times. Typing and Tab order are untouched — keystrokes aimed
+   at a field or a button are left alone, as are modified keys. */
+function takesOwnKeys(target) {
+  if (!target || !target.tagName) return false;
+  var tag = target.tagName.toLowerCase();
+  if (tag === 'textarea' || tag === 'input' || tag === 'select' || tag === 'button' || tag === 'a') return true;
+  return target.isContentEditable === true;
+}
+
+document.addEventListener('keydown', function (event) {
+  if (!state.steps.length) return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (takesOwnKeys(event.target)) return;
   var next;
   switch (event.key) {
     case 'ArrowDown': case 'ArrowRight': next = state.selected + 1; break;
@@ -953,6 +1003,7 @@ els.timeline.addEventListener('keydown', function (event) {
     case 'End': next = state.rendered - 1; break;
     default: return;
   }
+  if (next > state.rendered - 1) next = state.rendered - 1;
   event.preventDefault();
   select(next, true);
 });
@@ -1064,6 +1115,22 @@ function renderSummary() {
     wrap.appendChild(el('span', 'metric-value', value));
     els.summary.appendChild(wrap);
   }
+}
+
+/* What the page owes the reader about the run it is showing: that the bundled
+   transcript is invented, and how a timestamp with no zone was read. */
+function renderRunNotes(result) {
+  clear(els.runNotes);
+  var notes = [];
+  if (state.isExample) {
+    notes.push('The example on screen is hand-written for this page. It is not a capture of a real run: ' +
+      'the job, the config revision, the pull request and the host in it do not exist.');
+  }
+  if (result && result.naiveTime) {
+    notes.push('Some timestamps in this transcript carry no time zone. They are read as UTC.');
+  }
+  for (var i = 0; i < notes.length; i++) els.runNotes.appendChild(el('p', 'note', notes[i]));
+  els.runNotes.hidden = notes.length === 0;
 }
 
 /* ---------------------------------------------------------- file dropping ---- */
@@ -1314,12 +1381,18 @@ var EXAMPLE_TRANSCRIPT = [
   }
 ];
 
-function loadExample() {
+/* The box stays empty on load: it used to open holding 9,331 characters of the
+   example, so the first paste — the action the tagline invites — spliced the
+   visitor's JSON into the middle of it and failed at position 5. The example
+   still loads into the timeline; the button fills the box, because someone who
+   asked for the example probably wants to read and edit it. */
+function loadExample(fillBox) {
   var text = JSON.stringify(EXAMPLE_TRANSCRIPT, null, 2);
-  els.input.value = text;
+  if (fillBox) els.input.value = text;
+  nextIsExample = true;
   loadText(text, 'Bundled example');
 }
 
-document.getElementById('example-btn').addEventListener('click', loadExample);
+document.getElementById('example-btn').addEventListener('click', function () { loadExample(true); });
 
-loadExample();
+loadExample(false);
