@@ -42,40 +42,53 @@ function firstLine(text, max) {
 }
 
 /* Bounded JSON-ish formatter. Not a serialiser: elisions are human notes, so
-   the output is for reading, not for round-tripping. */
+   the output is for reading, not for round-tripping.
+
+   Every character is charged to the budget exactly once. An earlier version
+   charged a nested value again at each level on the way out, so the budget ran
+   out — and the page claimed a clip — on values a fraction of the stated limit.
+   `budget.clipped` is set only where something is actually left out. */
 function writeValue(value, depth, budget) {
-  if (budget.left <= 0) return '…';
+  if (budget.left <= 0) { budget.clipped = true; return '…'; }
   var out;
   if (value === null) { out = 'null'; }
-  else if (typeof value === 'string') { out = JSON.stringify(value.slice(0, budget.left + 1)); }
+  else if (typeof value === 'string') {
+    if (value.length > budget.left) {
+      budget.clipped = true;
+      out = JSON.stringify(value.slice(0, Math.max(0, budget.left))) + ' …';
+    } else {
+      out = JSON.stringify(value);
+    }
+  }
   else if (typeof value === 'number' || typeof value === 'boolean') { out = String(value); }
   else if (typeof value !== 'object') { out = String(value); }
-  else if (depth >= LIMITS.depth) { out = Array.isArray(value) ? '[ ... ]' : '{ ... }'; }
+  else if (depth >= LIMITS.depth) { budget.clipped = true; out = Array.isArray(value) ? '[ ... ]' : '{ ... }'; }
   else {
     var pad = '  '.repeat(depth + 1);
     var close = '  '.repeat(depth);
     var parts = [];
     var i;
-    if (Array.isArray(value)) {
-      if (value.length === 0) return take('[]', budget);
-      for (i = 0; i < value.length && i < LIMITS.items && budget.left > 0; i++) {
-        parts.push(pad + writeValue(value[i], depth + 1, budget));
-      }
-      if (value.length > LIMITS.items) parts.push(pad + '... ' + (value.length - LIMITS.items) + ' more items');
-      return take('[\n' + parts.join(',\n') + '\n' + close + ']', budget);
+    var isArray = Array.isArray(value);
+    var keys = isArray ? null : Object.keys(value);
+    var count = isArray ? value.length : keys.length;
+    if (count === 0) return charge(isArray ? '[]' : '{}', budget);
+    // Brackets and the newline that closes the block.
+    budget.left -= 3 + close.length;
+    for (i = 0; i < count && i < LIMITS.items && budget.left > 0; i++) {
+      var head = isArray ? pad : pad + JSON.stringify(keys[i]) + ': ';
+      budget.left -= head.length + 2;               // indent, key, ',\n'
+      parts.push(head + writeValue(isArray ? value[i] : value[keys[i]], depth + 1, budget));
     }
-    var keys = Object.keys(value);
-    if (keys.length === 0) return take('{}', budget);
-    for (i = 0; i < keys.length && i < LIMITS.items && budget.left > 0; i++) {
-      parts.push(pad + JSON.stringify(keys[i]) + ': ' + writeValue(value[keys[i]], depth + 1, budget));
+    if (i < count) {
+      budget.clipped = true;
+      parts.push(pad + '... ' + (count - i) + (isArray ? ' more items' : ' more keys'));
     }
-    if (keys.length > LIMITS.items) parts.push(pad + '... ' + (keys.length - LIMITS.items) + ' more keys');
-    return take('{\n' + parts.join(',\n') + '\n' + close + '}', budget);
+    return (isArray ? '[\n' : '{\n') + parts.join(',\n') + '\n' + close + (isArray ? ']' : '}');
   }
-  return take(out, budget);
+  return charge(out, budget);
 }
 
-function take(text, budget) {
+function charge(text, budget) {
   budget.left -= text.length;
   return text;
 }
@@ -93,9 +106,9 @@ function presentValue(value) {
       fullLength: value.length
     };
   }
-  var budget = { left: LIMITS.value };
+  var budget = { left: LIMITS.value, clipped: false };
   var text = writeValue(value, 0, budget);
-  return { text: displayText(text), kind: 'json', truncated: budget.left <= 0 };
+  return { text: displayText(text), kind: 'json', truncated: budget.clipped };
 }
 
 /* --------------------------------------------------------------- steps ---- */
@@ -104,6 +117,7 @@ var KIND_LABEL = {
   user: 'User',
   system: 'System',
   thought: 'Assistant',
+  thinking: 'Thinking',
   'tool-call': 'Tool call',
   'tool-result': 'Tool result',
   final: 'Final answer',
@@ -130,23 +144,70 @@ function makeStep(kind, fields) {
 
 function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
 
-// Timestamps are read, never invented: only these fields, only if parseable.
+// Timestamps are read, never invented: only these fields, only in forms that
+// can be read one way. Date.parse accepts far more than it should — a naive
+// "2026-08-17 02:14:08" is read as local time, so the same file measures a
+// different elapsed on every machine, and "August 17" becomes this year.
 var TIME_KEYS = ['timestamp', 'time', 'ts', 'created_at', 'createdAt', 'started_at'];
+
+// 1990-01-01 .. 2100-01-01. Outside this a value is not a time we believe.
+var TIME_MIN_MS = 631152000000;
+var TIME_MAX_MS = 4102444800000;
+
+var TIME_ZONED = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|z|[+-]\d{2}:?\d{2})$/;
+var TIME_NAIVE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?$/;
+
+// Set when a timestamp without a zone was read; the page then says how it read it.
+var PARSE_FLAGS = { naiveTime: false };
+
+function parseTimeString(raw) {
+  var s = raw.trim();
+  if (TIME_ZONED.test(s)) {
+    var iso = s.replace(' ', 'T').replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+    var ms = Date.parse(iso);
+    return isNaN(ms) ? null : ms;
+  }
+  var m = TIME_NAIVE.exec(s);
+  if (m) {
+    // No zone in the log. Read as UTC, always, and disclose it on the page.
+    var utc = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+    if (isNaN(utc)) return null;
+    PARSE_FLAGS.naiveTime = true;
+    return utc;
+  }
+  return null;
+}
 
 function readTimestamp(obj) {
   if (!isPlainObject(obj)) return null;
   for (var i = 0; i < TIME_KEYS.length; i++) {
     var raw = obj[TIME_KEYS[i]];
+    var ms = null;
     if (typeof raw === 'number' && isFinite(raw)) {
-      // Heuristic covers the unit only; seconds-since-epoch is common in logs.
-      return raw > 1e11 ? raw : raw * 1000;
+      // Seconds and milliseconds are both common; the unit is chosen by which
+      // one lands in a believable window. Neither does: not a timestamp.
+      if (raw >= TIME_MIN_MS && raw <= TIME_MAX_MS) ms = raw;
+      else if (raw * 1000 >= TIME_MIN_MS && raw * 1000 <= TIME_MAX_MS) ms = raw * 1000;
+    } else if (typeof raw === 'string' && raw) {
+      ms = parseTimeString(raw);
     }
-    if (typeof raw === 'string' && raw) {
-      var ms = Date.parse(raw);
-      if (!isNaN(ms)) return ms;
-    }
+    if (ms !== null && ms >= TIME_MIN_MS && ms <= TIME_MAX_MS) return ms;
   }
   return null;
+}
+
+// Ids and tool names are strings in every dialect we read, but logs written by
+// hand carry numbers. Coerced, so pairing works and the name is shown as logged.
+function readId(value) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && isFinite(value)) return String(value);
+  return '';
+}
+
+function readName(value) {
+  if (typeof value === 'string' && value) return value;
+  if (typeof value === 'number' && isFinite(value)) return String(value);
+  return '';
 }
 
 // Anthropic tool_result content is a string, a block array, or anything at all.
@@ -169,7 +230,8 @@ function flattenContent(content) {
 function roleKind(role) {
   if (role === 'user' || role === 'human') return 'user';
   if (role === 'system' || role === 'developer') return 'system';
-  if (role === 'assistant' || role === 'model') return 'thought';
+  // 'ai' and 'chat' are what LangChain and LangGraph exports write.
+  if (role === 'assistant' || role === 'model' || role === 'ai' || role === 'chat') return 'thought';
   return 'note';
 }
 
@@ -213,21 +275,24 @@ function parseAnthropic(messages) {
         steps.push(makeStep(roleKind(role), { title: firstLine(text) || '(empty text block)', text: text, timestamp: when }));
       } else if (type === 'tool_use' || type === 'server_tool_use') {
         steps.push(makeStep('tool-call', {
-          toolName: typeof block.name === 'string' ? block.name : '(unnamed tool)',
-          toolId: typeof block.id === 'string' ? block.id : '',
+          toolName: readName(block.name) || '(unnamed tool)',
+          toolId: readId(block.id),
           input: block.input,
           timestamp: when
         }));
       } else if (type === 'tool_result' || type === 'web_search_tool_result') {
         steps.push(makeStep('tool-result', {
-          toolId: typeof block.tool_use_id === 'string' ? block.tool_use_id : '',
+          toolId: readId(block.tool_use_id),
           result: maybeJSON(flattenContent(block.content)),
           isError: block.is_error === true,
           timestamp: when
         }));
-      } else if (type === 'thinking') {
-        var think = typeof block.thinking === 'string' ? block.thinking : presentValue(block).text;
-        steps.push(makeStep('thought', { title: firstLine(think), text: think, timestamp: when, notes: ['extended thinking'] }));
+      } else if (type === 'thinking' || type === 'redacted_thinking') {
+        // Its own kind: extended thinking is not the assistant's answer, and the
+        // difference should be visible in the list, not only after a click.
+        var think = typeof block.thinking === 'string' ? block.thinking :
+          (type === 'redacted_thinking' ? '(redacted thinking)' : presentValue(block).text);
+        steps.push(makeStep('thinking', { title: firstLine(think), text: think, timestamp: when, notes: ['extended thinking'] }));
       } else {
         steps.push(makeStep('note', {
           title: type ? 'Block: ' + firstLine(type, 40) : 'Unrecognised block',
@@ -235,6 +300,14 @@ function parseAnthropic(messages) {
           timestamp: when
         }));
       }
+    }
+    if (content.length > LIMITS.items) {
+      // The cap is real, so it is stated rather than dropping content silently.
+      steps.push(makeStep('note', {
+        title: (content.length - LIMITS.items) + ' further content blocks in message ' +
+          (i + 1) + ' were not read (limit ' + LIMITS.items + ' per message).',
+        timestamp: when
+      }));
     }
   }
   return steps;
@@ -248,22 +321,35 @@ function linkSteps(steps) {
   var byId = Object.create(null);
   var i;
   for (i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'tool-call' && steps[i].toolId && byId[steps[i].toolId] === undefined) {
-      byId[steps[i].toolId] = i;
+    if (steps[i].kind === 'tool-call' && steps[i].toolId) {
+      if (byId[steps[i].toolId] === undefined) byId[steps[i].toolId] = [];
+      byId[steps[i].toolId].push(i);
     }
   }
+  // Calls with the same id are consumed in order, so two calls sharing an id
+  // keep one result each instead of both pointing at the last one.
   for (i = 0; i < steps.length; i++) {
     var s = steps[i];
     if (s.kind !== 'tool-result') continue;
-    var target = s.toolId ? byId[s.toolId] : undefined;
+    var queue = s.toolId ? byId[s.toolId] : undefined;
+    var target = (queue && queue.length) ? queue.shift() : undefined;
     if (target !== undefined) {
       s.pairIndex = target;
       steps[target].pairIndex = i;
       if (!s.toolName) s.toolName = steps[target].toolName;
+      if (queue.length || queue.consumed) {
+        var shared = 'More than one call in this log carries id ' + firstLine(s.toolId, 60) +
+          '; calls and results are matched in the order they appear.';
+        s.notes.push(shared);
+        steps[target].notes.push(shared);
+      }
+      queue.consumed = true;
+    } else if (s.toolId && byId[s.toolId]) {
+      s.notes.push('Every call carrying id ' + firstLine(s.toolId, 60) + ' already has a result in this log.');
     } else if (s.toolId) {
-      s.notes.push('No tool call in this log carries id ' + firstLine(s.toolId, 60));
+      s.notes.push('No tool call in this log carries id ' + firstLine(s.toolId, 60) + '.');
     } else {
-      s.notes.push('This result carries no call id');
+      s.notes.push('This result carries no call id.');
     }
   }
   for (i = steps.length - 1; i >= 0; i--) {
@@ -302,10 +388,15 @@ function parseOpenAI(messages) {
     var text = openAIText(msg.content);
 
     if (role === 'tool' || role === 'function') {
+      var payload = maybeJSON(msg.content);
       steps.push(makeStep('tool-result', {
-        toolId: typeof msg.tool_call_id === 'string' ? msg.tool_call_id : '',
-        toolName: typeof msg.name === 'string' ? msg.name : '',
-        result: maybeJSON(msg.content),
+        toolId: readId(msg.tool_call_id),
+        toolName: readName(msg.name),
+        result: payload,
+        // This dialect has no is_error field, so a failure is read from what the
+        // log actually says: an explicit flag, or an `error` in the payload.
+        isError: msg.is_error === true || msg.error === true || msg.status === 'error' ||
+          (isPlainObject(payload) && payload.error !== undefined && payload.error !== null && payload.error !== false),
         timestamp: when
       }));
       continue;
@@ -316,6 +407,13 @@ function parseOpenAI(messages) {
     if (Array.isArray(msg.tool_calls)) {
       for (var c = 0; c < msg.tool_calls.length && c < LIMITS.items; c++) {
         steps.push(openAICall(msg.tool_calls[c], when));
+      }
+      if (msg.tool_calls.length > LIMITS.items) {
+        steps.push(makeStep('note', {
+          title: (msg.tool_calls.length - LIMITS.items) + ' further tool calls in message ' +
+            (i + 1) + ' were not read (limit ' + LIMITS.items + ' per message).',
+          timestamp: when
+        }));
       }
     } else if (isPlainObject(msg.function_call)) {
       steps.push(openAICall({ function: msg.function_call }, when));
@@ -328,13 +426,18 @@ function openAICall(call, when) {
   if (!isPlainObject(call)) return makeStep('note', { title: 'Unrecognised tool call', result: call, timestamp: when });
   var fn = isPlainObject(call.function) ? call.function : call;
   var args = fn.arguments !== undefined ? fn.arguments : fn.args;
+  var parsed = maybeJSON(args);
+  // `arguments` is a JSON string in this dialect; keep it raw when it is not
+  // parseable rather than hiding what the model actually emitted — and say so,
+  // because raw text next to pretty-printed calls otherwise looks like a bug.
+  var notes = (typeof args === 'string' && args.trim() !== '' && parsed === args) ?
+    ['These arguments are not valid JSON, so they are shown exactly as the model emitted them.'] : [];
   return makeStep('tool-call', {
-    toolName: typeof fn.name === 'string' ? fn.name : '(unnamed tool)',
-    toolId: typeof call.id === 'string' ? call.id : '',
-    // `arguments` is a JSON string in this dialect; keep it raw when it is not
-    // parseable rather than hiding what the model actually emitted.
-    input: maybeJSON(args),
-    timestamp: when
+    toolName: readName(fn.name) || '(unnamed tool)',
+    toolId: readId(call.id),
+    input: parsed,
+    timestamp: when,
+    notes: notes
   });
 }
 
@@ -368,6 +471,11 @@ function openAIText(content) {
 var CALL_HINTS = ['tool_use', 'tool_call', 'toolcall', 'function_call', 'action', 'invoke'];
 var RESULT_HINTS = ['tool_result', 'tool_response', 'observation', 'result', 'output', 'return'];
 
+var NAME_KEYS = ['name', 'tool', 'tool_name', 'toolName', 'function', 'action'];
+var INPUT_KEYS = ['input', 'arguments', 'args', 'parameters', 'params', 'tool_input'];
+var OUTPUT_KEYS = ['result', 'output', 'observation', 'response', 'content', 'text', 'message'];
+var ID_KEYS = ['tool_use_id', 'tool_call_id', 'call_id', 'id'];
+
 // Best effort for logs in no dialect we know: recognise something rather than
 // refusing the file.
 function parseGeneric(entries) {
@@ -382,31 +490,48 @@ function parseGeneric(entries) {
       steps.push(makeStep('note', { title: describeType(entry) + ' at index ' + i, result: entry }));
       continue;
     }
+    // LangChain and LangGraph exports carry the message under `data`; read
+    // through it rather than rendering an empty step.
+    var body = isPlainObject(entry.data) ? entry.data : entry;
     var when = readTimestamp(entry);
-    var tag = String(entry.type || entry.kind || entry.event || entry.role || '').toLowerCase();
-    var name = pickString(entry, ['name', 'tool', 'tool_name', 'toolName', 'function', 'action']);
-    var input = pickValue(entry, ['input', 'arguments', 'args', 'parameters', 'params', 'tool_input']);
-    var output = pickValue(entry, ['result', 'output', 'observation', 'response', 'content', 'text', 'message']);
-    var id = pickString(entry, ['tool_use_id', 'tool_call_id', 'call_id', 'id']);
+    if (when === null && body !== entry) when = readTimestamp(body);
+    var tag = String(entry.type || entry.kind || entry.event || entry.role ||
+      body.role || body.type || '').toLowerCase();
+    var name = pickString(body, NAME_KEYS) || pickString(entry, NAME_KEYS);
+    var input = pickValue(body, INPUT_KEYS);
+    if (input === undefined) input = pickValue(entry, INPUT_KEYS);
+    var output = pickValue(body, OUTPUT_KEYS);
+    if (output === undefined) output = pickValue(entry, OUTPUT_KEYS);
+    var id = pickId(body, ID_KEYS) || pickId(entry, ID_KEYS);
 
     if (matchesAny(tag, CALL_HINTS) || (input !== undefined && output === undefined && name)) {
       steps.push(makeStep('tool-call', { toolName: name || '(unnamed tool)', toolId: id, input: input, timestamp: when }));
     } else if (matchesAny(tag, RESULT_HINTS) || (output !== undefined && name && input === undefined)) {
       steps.push(makeStep('tool-result', {
         toolName: name, toolId: id, result: maybeJSON(output),
-        isError: entry.is_error === true || entry.error === true || entry.status === 'error',
+        isError: entry.is_error === true || entry.error === true || entry.status === 'error' ||
+          body.is_error === true || body.error === true || body.status === 'error',
         timestamp: when
       }));
     } else {
-      var kind = roleKind(tag);
+      // A role names the speaker better than a generic `type` like "message".
+      var role = String(entry.role || body.role || '').toLowerCase();
+      var kind = roleKind(role);
+      if (kind === 'note') kind = roleKind(tag);
       if (kind === 'note' && matchesAny(tag, ['thought', 'text', 'message', 'answer', 'reason'])) kind = 'thought';
       var text = typeof output === 'string' ? output : (output === undefined ? '' : presentValue(output).text);
       steps.push(makeStep(kind, {
-        title: text ? firstLine(text) : (tag ? firstLine(tag, 60) : 'Entry ' + i),
+        title: text ? firstLine(text) : (tag ? firstLine(tag, 60) : 'Entry ' + (i + 1)),
         text: text,
         result: text ? undefined : entry,
-        timestamp: when
+        timestamp: when,
+        notes: text ? [] : ['No text was found in this entry; the entry itself is shown below.']
       }));
+      // One flat log line often carries both what was said and the call it
+      // made. Both are steps, so both are listed.
+      if (name && input !== undefined) {
+        steps.push(makeStep('tool-call', { toolName: name, toolId: id, input: input, timestamp: when }));
+      }
     }
   }
   return steps;
@@ -431,6 +556,14 @@ function pickValue(obj, keys) {
   return undefined;
 }
 
+function pickId(obj, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var id = readId(obj[keys[i]]);
+    if (id) return id;
+  }
+  return '';
+}
+
 /* ------------------------------------------------------------- dialects ---- */
 
 var DIALECTS = {
@@ -439,22 +572,58 @@ var DIALECTS = {
   generic: { label: 'generic step list', parse: parseGeneric }
 };
 
-function detectDialect(messages) {
-  var sawRole = false;
-  for (var i = 0; i < messages.length && i < 500; i++) {
+/* A dialect is only claimed when the structure that defines it is present. A
+   bare `role`, or a `tool_call_id` key, is just as idiomatic in the homegrown
+   flat logs the generic parser exists for, and committing to a dialect on that
+   evidence used to blank every row. The whole list is scanned: a sampling
+   window put the deciding message out of view in long transcripts. */
+function scanEvidence(messages) {
+  var ev = { openai: false, blocks: false, flat: false, roles: false };
+  for (var i = 0; i < messages.length; i++) {
     var m = messages[i];
     if (!isPlainObject(m)) continue;
-    if (Array.isArray(m.tool_calls) || m.function_call !== undefined ||
-        m.role === 'tool' || typeof m.tool_call_id === 'string') return 'openai';
-    if (typeof m.role === 'string') sawRole = true;
+    if (typeof m.role === 'string') ev.roles = true;
+    if (Array.isArray(m.tool_calls) || isPlainObject(m.function_call) ||
+        m.role === 'tool' || m.role === 'function') ev.openai = true;
     if (Array.isArray(m.content)) {
-      for (var b = 0; b < m.content.length && b < 20; b++) {
+      for (var b = 0; b < m.content.length; b++) {
         var block = m.content[b];
-        if (isPlainObject(block) && (block.type === 'tool_use' || block.type === 'tool_result')) return 'anthropic';
+        if (isPlainObject(block) && typeof block.type === 'string') { ev.blocks = true; break; }
       }
     }
+    // Flat homegrown logs: a step tag on the entry itself, a nested LangChain
+    // `data` body, or a tool name sitting beside its arguments or its output.
+    var tag = String(m.type || m.kind || m.event || '').toLowerCase();
+    if (tag && (matchesAny(tag, CALL_HINTS) || matchesAny(tag, RESULT_HINTS))) ev.flat = true;
+    if (isPlainObject(m.data)) ev.flat = true;
+    if ((m.name !== undefined || m.tool !== undefined || m.tool_name !== undefined) &&
+        (m.arguments !== undefined || m.input !== undefined || m.output !== undefined ||
+         m.result !== undefined || m.observation !== undefined)) ev.flat = true;
+    if (ev.openai && ev.blocks) break;
   }
-  return sawRole ? 'anthropic' : 'generic';
+  return ev;
+}
+
+// Candidate parsers, best first. The caller falls through when the leading
+// candidate reads nothing out of the file.
+function dialectOrder(messages) {
+  var ev = scanEvidence(messages);
+  if (ev.openai) return ['openai', 'anthropic', 'generic'];
+  if (ev.blocks) return ['anthropic', 'openai', 'generic'];
+  if (ev.flat) return ['generic', 'anthropic', 'openai'];
+  if (ev.roles) return ['anthropic', 'openai', 'generic'];
+  return ['generic', 'anthropic', 'openai'];
+}
+
+// How much a parse actually recovered: text and tool steps, nothing else.
+function contentScore(steps) {
+  var score = 0;
+  for (var i = 0; i < steps.length; i++) {
+    var s = steps[i];
+    if (s.kind === 'tool-call' || s.kind === 'tool-result') score += 2;
+    else if (typeof s.text === 'string' && s.text.trim() !== '') score += 1;
+  }
+  return score;
 }
 
 /* ---------------------------------------------------------------- entry ---- */
@@ -465,7 +634,7 @@ ParseError.prototype = Object.create(Error.prototype);
 var CONTAINER_KEYS = ['messages', 'steps', 'events', 'trace', 'transcript', 'conversation', 'history', 'turns', 'items', 'log'];
 
 function parseTranscript(raw) {
-  if (typeof raw !== 'string' || raw.trim() === '') throw new ParseError('Nothing to parse - the input is empty.');
+  if (typeof raw !== 'string' || raw.trim() === '') throw new ParseError('Nothing to parse — the input is empty.');
   if (raw.length > LIMITS.input) {
     throw new ParseError('Input is ' + raw.length.toLocaleString() + ' characters; this page parses up to ' + LIMITS.input.toLocaleString() + '.');
   }
@@ -473,13 +642,36 @@ function parseTranscript(raw) {
   try {
     data = JSON.parse(raw);
   } catch (err) {
-    throw new ParseError('That is not valid JSON: ' + firstLine(err && err.message ? err.message : String(err), 200));
+    throw new ParseError('That is not valid JSON. The parser said: ' +
+      firstLine(err && err.message ? err.message : String(err), 200) + '.');
   }
   var messages = asMessageList(data);
-  var dialect = detectDialect(messages);
-  var steps = linkSteps(DIALECTS[dialect].parse(messages));
-  if (steps.length === 0) throw new ParseError('Parsed as JSON, but no steps were found in it.');
-  return { steps: steps, dialect: DIALECTS[dialect].label };
+  if (!stepShaped(messages)) {
+    throw new ParseError('Parsed as JSON, but nothing in it is step-shaped: this page expects objects with a role, a type, or a message.');
+  }
+  PARSE_FLAGS.naiveTime = false;
+  var order = dialectOrder(messages);
+  var best = null;
+  for (var i = 0; i < order.length; i++) {
+    PARSE_FLAGS.naiveTime = false;
+    var steps = linkSteps(DIALECTS[order[i]].parse(messages));
+    if (best === null) best = { steps: steps, dialect: DIALECTS[order[i]].label };
+    // A parser that recovered no text and no tool steps has not understood the
+    // file, whatever the detector thought; try the next one.
+    if (contentScore(steps) > 0) { best = { steps: steps, dialect: DIALECTS[order[i]].label }; break; }
+  }
+  if (!best || best.steps.length === 0) throw new ParseError('Parsed as JSON, but no steps were found in it.');
+  best.naiveTime = PARSE_FLAGS.naiveTime;
+  return best;
+}
+
+// Something has to look like a step. `[1, 2, 3]` is valid JSON and not a run.
+function stepShaped(messages) {
+  for (var i = 0; i < messages.length; i++) {
+    if (isPlainObject(messages[i])) return true;
+    if (typeof messages[i] === 'string' && messages[i].trim() !== '') return true;
+  }
+  return false;
 }
 
 function asMessageList(data) {
