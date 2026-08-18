@@ -608,7 +608,10 @@ function renderDetail() {
     return;
   }
   els.detail.appendChild(el('p', 'detail-kind', KIND_LABEL[step.kind] || 'Step'));
-  els.detail.appendChild(el('p', 'detail-title', displayText(step.toolName || step.title)));
+  // Text steps carry their content in the Text section below; repeating it as a
+  // heading would just say the same thing twice.
+  var heading = step.toolName || (step.text === undefined ? step.title : '');
+  if (heading) els.detail.appendChild(el('p', 'detail-title', displayText(heading)));
 
   var meta = ['Step ' + (step.index + 1) + ' of ' + state.steps.length];
   if (step.toolId) meta.push('id ' + firstLine(step.toolId, 60));
