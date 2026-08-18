@@ -572,23 +572,37 @@ var DIALECTS = {
   generic: { label: 'generic step list', parse: parseGeneric }
 };
 
-/* A dialect is only claimed when the structure that defines it is present. A
-   bare `role`, or a `tool_call_id` key, is just as idiomatic in the homegrown
-   flat logs the generic parser exists for, and committing to a dialect on that
-   evidence used to blank every row. The whole list is scanned: a sampling
-   window put the deciding message out of view in long transcripts. */
+/* Evidence is weighed, not merely noticed. A bare `role`, or a `tool_call_id`
+   key, is just as idiomatic in the homegrown flat logs the generic parser
+   exists for, so each dialect gets a strength: the structures only it has score
+   highest, the ones it shares with the others score low. The whole list is
+   scanned — a sampling window put the deciding message out of view in long
+   transcripts. */
+
+// Block types that no other dialect writes.
+var ANTHROPIC_BLOCKS = ['tool_use', 'server_tool_use', 'tool_result',
+  'web_search_tool_result', 'thinking', 'redacted_thinking'];
+
 function scanEvidence(messages) {
-  var ev = { openai: false, blocks: false, flat: false, roles: false };
+  var ev = {
+    openaiStrong: false, openaiWeak: false,
+    blocksStrong: false, blocksWeak: false,
+    flat: false, roles: false
+  };
   for (var i = 0; i < messages.length; i++) {
     var m = messages[i];
     if (!isPlainObject(m)) continue;
     if (typeof m.role === 'string') ev.roles = true;
-    if (Array.isArray(m.tool_calls) || isPlainObject(m.function_call) ||
-        m.role === 'tool' || m.role === 'function') ev.openai = true;
+    // Only OpenAI carries a tool_calls array or a function_call object.
+    if (Array.isArray(m.tool_calls) || isPlainObject(m.function_call)) ev.openaiStrong = true;
+    // A `role: "tool"` row is weaker: converters emit it into every dialect.
+    if (m.role === 'tool' || m.role === 'function') ev.openaiWeak = true;
     if (Array.isArray(m.content)) {
       for (var b = 0; b < m.content.length; b++) {
         var block = m.content[b];
-        if (isPlainObject(block) && typeof block.type === 'string') { ev.blocks = true; break; }
+        if (!isPlainObject(block) || typeof block.type !== 'string') continue;
+        ev.blocksWeak = true;
+        if (ANTHROPIC_BLOCKS.indexOf(block.type) !== -1) ev.blocksStrong = true;
       }
     }
     // Flat homegrown logs: a step tag on the entry itself, a nested LangChain
@@ -599,20 +613,25 @@ function scanEvidence(messages) {
     if ((m.name !== undefined || m.tool !== undefined || m.tool_name !== undefined) &&
         (m.arguments !== undefined || m.input !== undefined || m.output !== undefined ||
          m.result !== undefined || m.observation !== undefined)) ev.flat = true;
-    if (ev.openai && ev.blocks) break;
   }
   return ev;
 }
 
-// Candidate parsers, best first. The caller falls through when the leading
-// candidate reads nothing out of the file.
+/* Candidates in the order their evidence is strongest. This order decides ties
+   only: the caller runs every candidate and keeps the one that reads the most
+   out of the file. Committing to the first candidate with any evidence at all
+   is what let a single stray `role: "tool"` row turn an Anthropic transcript
+   into an OpenAI one. */
 function dialectOrder(messages) {
   var ev = scanEvidence(messages);
-  if (ev.openai) return ['openai', 'anthropic', 'generic'];
-  if (ev.blocks) return ['anthropic', 'openai', 'generic'];
-  if (ev.flat) return ['generic', 'anthropic', 'openai'];
-  if (ev.roles) return ['anthropic', 'openai', 'generic'];
-  return ['generic', 'anthropic', 'openai'];
+  var weight = {
+    anthropic: ev.blocksStrong ? 4 : (ev.blocksWeak ? 2 : (ev.roles ? 1 : 0)),
+    openai: ev.openaiStrong ? 3 : (ev.openaiWeak ? 1.5 : (ev.roles ? 0.5 : 0)),
+    generic: ev.flat ? 3.5 : 0.75
+  };
+  var names = ['anthropic', 'openai', 'generic'];
+  names.sort(function (a, b) { return weight[b] - weight[a]; });
+  return names;
 }
 
 // How much a parse actually recovered: text and tool steps, nothing else.
@@ -650,19 +669,23 @@ function parseTranscript(raw) {
   if (!stepShaped(messages)) {
     throw new ParseError('Parsed as JSON, but nothing in it is step-shaped: this page expects objects with a role, a type, or a message.');
   }
-  PARSE_FLAGS.naiveTime = false;
+  /* Every candidate is run and the best-scoring result kept. A partly
+     successful wrong parse used to win simply by going first: it scored two
+     points off the one row it understood while the parse that understood the
+     whole file was never run. Candidates are tried in evidence order, so an
+     exact tie still falls to the dialect the structure points at. */
   var order = dialectOrder(messages);
   var best = null;
   for (var i = 0; i < order.length; i++) {
     PARSE_FLAGS.naiveTime = false;
     var steps = linkSteps(DIALECTS[order[i]].parse(messages));
-    if (best === null) best = { steps: steps, dialect: DIALECTS[order[i]].label };
-    // A parser that recovered no text and no tool steps has not understood the
-    // file, whatever the detector thought; try the next one.
-    if (contentScore(steps) > 0) { best = { steps: steps, dialect: DIALECTS[order[i]].label }; break; }
+    var score = contentScore(steps);
+    if (best === null || score > best.score) {
+      best = { steps: steps, dialect: DIALECTS[order[i]].label, score: score, naiveTime: PARSE_FLAGS.naiveTime };
+    }
   }
   if (!best || best.steps.length === 0) throw new ParseError('Parsed as JSON, but no steps were found in it.');
-  best.naiveTime = PARSE_FLAGS.naiveTime;
+  PARSE_FLAGS.naiveTime = best.naiveTime;
   return best;
 }
 
