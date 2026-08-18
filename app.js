@@ -462,7 +462,14 @@ function maybeJSON(value) {
   if (typeof value !== 'string') return value;
   var trimmed = value.trim();
   if (!trimmed || '{["-0123456789tfn'.indexOf(trimmed.charAt(0)) === -1) return value;
-  try { return JSON.parse(trimmed); } catch (err) { return value; }
+  try {
+    var parsed = JSON.parse(trimmed);
+    // "1e999" parses to Infinity, which the page then printed as the word
+    // Infinity — a value the log never contained. A number JSON cannot hold is
+    // left as the text that was logged.
+    if (typeof parsed === 'number' && !isFinite(parsed)) return value;
+    return parsed;
+  } catch (err) { return value; }
 }
 
 // OpenAI content is a string, null, or an array of typed parts.
@@ -517,12 +524,20 @@ function parseGeneric(entries) {
     var input = pickValue(body, INPUT_KEYS);
     if (input === undefined) input = pickValue(entry, INPUT_KEYS);
     var output = pickValue(body, OUTPUT_KEYS);
-    if (output === undefined) output = pickValue(entry, OUTPUT_KEYS);
+    var outputKey = pickKey(body, OUTPUT_KEYS);
+    if (output === undefined) { output = pickValue(entry, OUTPUT_KEYS); outputKey = pickKey(entry, OUTPUT_KEYS); }
     var id = pickId(body, ID_KEYS) || pickId(entry, ID_KEYS);
+
+    /* The key an entry files its payload under names the entry as surely as a
+       type tag does: `observation` and `output` are results wherever they sit.
+       Only where nothing else claims the entry, though — a role that names a
+       speaker wins, so an assistant message is never read as a tool result. */
+    var speaks = roleKind(String(entry.role || body.role || '').toLowerCase()) !== 'note';
+    var resultKey = !speaks && outputKey && matchesAny(outputKey, RESULT_HINTS);
 
     if (matchesAny(tag, CALL_HINTS) || (input !== undefined && output === undefined && name)) {
       steps.push(makeStep('tool-call', { toolName: name || '(unnamed tool)', toolId: id, input: input, timestamp: when }));
-    } else if (matchesAny(tag, RESULT_HINTS) || (output !== undefined && name && input === undefined)) {
+    } else if (matchesAny(tag, RESULT_HINTS) || resultKey || (output !== undefined && name && input === undefined)) {
       steps.push(makeStep('tool-result', {
         toolName: name, toolId: id, result: maybeJSON(output),
         isError: entry.is_error === true || entry.error === true || entry.status === 'error' ||
@@ -570,6 +585,12 @@ function pickString(obj, keys) {
 function pickValue(obj, keys) {
   for (var i = 0; i < keys.length; i++) if (obj[keys[i]] !== undefined) return obj[keys[i]];
   return undefined;
+}
+
+// Which of those keys carried the value: the name is evidence in its own right.
+function pickKey(obj, keys) {
+  for (var i = 0; i < keys.length; i++) if (obj[keys[i]] !== undefined) return keys[i];
+  return '';
 }
 
 function pickId(obj, keys) {
@@ -739,7 +760,7 @@ function describeType(v) {
 /* Everything below builds DOM nodes by hand. Transcript text reaches the page
    only through textContent, so hostile markup in a log is inert. */
 
-var state = { steps: [], selected: 0, rendered: 0, dialect: '', isExample: false };
+var state = { steps: [], selected: 0, rendered: 0, dialect: '', isExample: false, statusLine: '' };
 var nextIsExample = false;
 
 var els = {
@@ -767,6 +788,9 @@ function clear(node) { while (node.firstChild) node.removeChild(node.firstChild)
 function setStatus(message, isError) {
   els.status.textContent = message;
   els.status.classList.toggle('error', !!isError);
+  // The last thing that went right, kept so a stale refusal can be replaced by
+  // it rather than sitting in red over actions that then worked.
+  if (!isError) state.statusLine = message;
 }
 
 function formatTime(ms) {
@@ -994,6 +1018,9 @@ function select(index, moveFocus, reveal) {
     return;
   }
   var next = Math.max(0, index);
+  // A refusal describes the action it refused. This one worked, so the red line
+  // about the last one is no longer true of anything on screen.
+  if (els.status.classList.contains('error')) setStatus(state.statusLine, false);
   state.selected = next;
   var options = els.timeline.children;
   for (var i = 0; i < options.length; i++) {
@@ -1153,9 +1180,12 @@ function clampSlots() {
 }
 
 function addToggle(slot) {
-  // "The whole value" is only honest when the whole value is here; when the
-  // parser had to stop, the control offers the text that was loaded.
-  var openLabel = slot.dataset.clipped === 'true' ? 'Show the loaded text' : 'Show the whole value';
+  // Both halves of the label have to be true. "The whole value" is only honest
+  // when the whole value is here, so a clipped one offers what was loaded; and
+  // open is a scrolling box, not the value laid out end to end, so the label
+  // says that rather than promising a page the reader would have to hunt down.
+  var openLabel = slot.dataset.clipped === 'true' ?
+    'Show the loaded text in a scrolling box' : 'Show the whole value in a scrolling box';
   var toggle = el('button', 'link value-toggle', openLabel);
   toggle.type = 'button';
   toggle.setAttribute('aria-expanded', 'false');
@@ -1224,21 +1254,31 @@ function renderSummary() {
   if (!state.steps.length) return;
   var s = summarise(state.steps);
   metric('Steps', String(s.steps));
-  metric('Tool calls', String(s.calls));
-  if (s.errors > 0 && s.firstError >= 0) {
-    // The count is the way to the failure it counts.
-    var wrap = el('div', 'metric');
-    wrap.appendChild(el('span', 'metric-label', 'Errors'));
-    var link = el('button', 'link metric-value', String(s.errors));
-    link.type = 'button';
-    link.title = 'Go to the first error, step ' + (s.firstError + 1);
-    link.addEventListener('click', function () { select(s.firstError, true, true); });
-    wrap.appendChild(link);
-    els.summary.appendChild(wrap);
+  if (s.calls === 0 && s.errors === 0) {
+    // Three zeros in a row read as an interface bolted on to a run it does not
+    // fit. A run with no tool loop in it is one fact, so it is said once.
+    metric('Tool calls', 'none');
   } else {
-    metric('Errors', String(s.errors));
+    metric('Tool calls', String(s.calls));
+    // The count is the way to the failure it counts — but only when that step
+    // is listed. Beyond the render cap the jump can do nothing but refuse.
+    if (s.errors > 0 && s.firstError >= 0 && s.firstError < state.rendered) {
+      var wrap = el('div', 'metric');
+      wrap.appendChild(el('span', 'metric-label', 'Errors'));
+      var link = el('button', 'link metric-value', String(s.errors));
+      link.type = 'button';
+      var where = 'Go to the first error, step ' + (s.firstError + 1);
+      link.title = where;
+      // The number alone is the whole accessible name without this.
+      link.setAttribute('aria-label', s.errors + (s.errors === 1 ? ' error. ' : ' errors. ') + where + '.');
+      link.addEventListener('click', function () { select(s.firstError, true, true); });
+      wrap.appendChild(link);
+      els.summary.appendChild(wrap);
+    } else {
+      metric('Errors', String(s.errors));
+    }
+    metric('Distinct tools', String(s.distinct));
   }
-  metric('Distinct tools', String(s.distinct));
   if (s.tools.length) {
     // Every name that is listed is listed in full; a list too long to show says
     // how many it is not showing, rather than ending mid-identifier.

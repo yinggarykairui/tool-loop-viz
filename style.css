@@ -174,10 +174,12 @@ body.is-busy { cursor: progress; }
 }
 @keyframes busy-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 
+/* The rule that marks a link has to sit on the text. As a bottom border it
+   sat on the bottom of a 44px tap target, 15px clear of the words and the full
+   width of the button, which read as a stray section rule. */
 button.link {
   background: none;
   border: none;
-  border-bottom: 1px solid currentColor;
   border-radius: 0;
   color: var(--accent);
   padding: 0;
@@ -185,6 +187,8 @@ button.link {
   display: inline-flex;
   align-items: center;
   font-size: 0.875rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 
@@ -206,7 +210,18 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 }
 .summary:empty { display: none; }
 .summary .metric-value { color: var(--ink); font-variant-numeric: tabular-nums; }
-.summary button.link.metric-value { min-height: 0; color: var(--accent); }
+/* A metric keeps its place in the strip, so the button stays the size of the
+   number it shows — and carries a 44px target around it that costs no layout. */
+.summary button.link.metric-value { min-height: 0; color: var(--accent); position: relative; }
+.summary button.link.metric-value::after {
+  content: '';
+  position: absolute;
+  left: -0.75rem;
+  right: -0.75rem;
+  top: 50%;
+  height: 2.75rem;
+  transform: translateY(-50%);
+}
 .summary button.link.metric-value:hover { color: var(--ink); }
 .summary .metric-label { color: var(--ink-faint); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
 .summary .metric { display: flex; flex-direction: column; min-width: 0; }
@@ -429,12 +444,9 @@ pre.value, p.value {
   }
   .summary .metric { flex-direction: row; gap: 0.4rem; align-items: baseline; }
   .summary .metric-tools { flex: 1 1 100%; }
-  .summary .metric-tools .metric-value {
-    display: block;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  /* Wrapping, here as at every other width: an ellipsis in the middle of
+     query_wareh… names no tool anyone can look up. */
+  .summary .metric-tools .metric-value { display: block; }
   /* The form should not be the whole first screen. The label repeats the
      placeholder, so it is kept for screen readers and taken out of the flow,
      and the hint names things a phone does not have: a file to drag, a key to
