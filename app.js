@@ -608,7 +608,7 @@ function renderDetail() {
     return;
   }
   els.detail.appendChild(el('p', 'detail-kind', KIND_LABEL[step.kind] || 'Step'));
-  els.detail.appendChild(el('p', 'detail-title', step.toolName || step.title));
+  els.detail.appendChild(el('p', 'detail-title', displayText(step.toolName || step.title)));
 
   var meta = ['Step ' + (step.index + 1) + ' of ' + state.steps.length];
   if (step.toolId) meta.push('id ' + firstLine(step.toolId, 60));
