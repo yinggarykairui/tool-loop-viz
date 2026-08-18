@@ -646,6 +646,7 @@ function parseTranscript(raw) {
       firstLine(err && err.message ? err.message : String(err), 200) + '.');
   }
   var messages = asMessageList(data);
+  if (messages.length === 0) throw new ParseError('That array is empty, so there is no run to show.');
   if (!stepShaped(messages)) {
     throw new ParseError('Parsed as JSON, but nothing in it is step-shaped: this page expects objects with a role, a type, or a message.');
   }

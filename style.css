@@ -229,8 +229,6 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
   max-height: clamp(16rem, 55vh, 34rem);
   overflow-y: auto;
   overflow-x: hidden;
-  /* Rows settle on a row edge instead of being sliced against the border. */
-  scroll-snap-type: y proximity;
 }
 
 .step {
@@ -241,7 +239,6 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
   border-left: 3px solid transparent;
   cursor: pointer;
   min-width: 0;
-  scroll-snap-align: start;
   transition: background-color 120ms ease;
 }
 .step:last-child { border-bottom: none; }

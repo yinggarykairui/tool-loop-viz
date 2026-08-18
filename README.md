@@ -2,7 +2,7 @@
 
 Paste an agent's tool-call log and walk the loop one step at a time.
 
-![screenshot](screenshot.png)
+![The timeline of an agent run beside the detail of the selected step](screenshot.png)
 
 **[Live demo](https://yinggarykairui.github.io/tool-loop-viz/)**
 
@@ -13,6 +13,12 @@ can step through: what the model said, which tool it called with which
 arguments, what came back, and what it said next. It reads Anthropic Messages
 format, OpenAI chat format with `tool_calls`, and — as a fallback — a flat array
 of step objects. Tool results are matched to the call that produced them.
+
+It is bounded on purpose, because a transcript can be enormous: it lists the
+first 400 steps of a run, reads 200 content blocks or tool calls per message,
+keeps about 100,000 characters of any one value, lists 40 distinct tool names,
+and refuses input over 12 million characters. Whatever a cap leaves out, the
+page says so where it left it out.
 
 Nothing is sent anywhere. There is no key field, no request, and no storage: the
 parsing happens in the page. It opens on a bundled example so there is a loop to
