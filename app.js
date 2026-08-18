@@ -287,6 +287,176 @@ function defaultTitle(step) {
   return '(no content)';
 }
 
+/* --------------------------------------------------------------- openai ---- */
+
+function parseOpenAI(messages) {
+  var steps = [];
+  for (var i = 0; i < messages.length; i++) {
+    var msg = messages[i];
+    if (!isPlainObject(msg)) {
+      steps.push(makeStep('note', { title: 'Non-object message at index ' + i, result: msg }));
+      continue;
+    }
+    var role = typeof msg.role === 'string' ? msg.role : 'unknown';
+    var when = readTimestamp(msg);
+    var text = openAIText(msg.content);
+
+    if (role === 'tool' || role === 'function') {
+      steps.push(makeStep('tool-result', {
+        toolId: typeof msg.tool_call_id === 'string' ? msg.tool_call_id : '',
+        toolName: typeof msg.name === 'string' ? msg.name : '',
+        result: maybeJSON(msg.content),
+        timestamp: when
+      }));
+      continue;
+    }
+    if (text !== '' || (!Array.isArray(msg.tool_calls) && !msg.function_call)) {
+      steps.push(makeStep(roleKind(role), { title: firstLine(text) || '(no content)', text: text, timestamp: when }));
+    }
+    if (Array.isArray(msg.tool_calls)) {
+      for (var c = 0; c < msg.tool_calls.length && c < LIMITS.items; c++) {
+        steps.push(openAICall(msg.tool_calls[c], when));
+      }
+    } else if (isPlainObject(msg.function_call)) {
+      steps.push(openAICall({ function: msg.function_call }, when));
+    }
+  }
+  return steps;
+}
+
+function openAICall(call, when) {
+  if (!isPlainObject(call)) return makeStep('note', { title: 'Unrecognised tool call', result: call, timestamp: when });
+  var fn = isPlainObject(call.function) ? call.function : call;
+  var args = fn.arguments !== undefined ? fn.arguments : fn.args;
+  return makeStep('tool-call', {
+    toolName: typeof fn.name === 'string' ? fn.name : '(unnamed tool)',
+    toolId: typeof call.id === 'string' ? call.id : '',
+    // `arguments` is a JSON string in this dialect; keep it raw when it is not
+    // parseable rather than hiding what the model actually emitted.
+    input: maybeJSON(args),
+    timestamp: when
+  });
+}
+
+// Parses a JSON string when it parses; otherwise hands back the original value.
+function maybeJSON(value) {
+  if (typeof value !== 'string') return value;
+  var trimmed = value.trim();
+  if (!trimmed || '{["-0123456789tfn'.indexOf(trimmed.charAt(0)) === -1) return value;
+  try { return JSON.parse(trimmed); } catch (err) { return value; }
+}
+
+// OpenAI content is a string, null, or an array of typed parts.
+function openAIText(content) {
+  if (typeof content === 'string') return content;
+  if (content === null || content === undefined) return '';
+  if (Array.isArray(content)) {
+    var parts = [];
+    for (var i = 0; i < content.length && i < LIMITS.items; i++) {
+      var part = content[i];
+      if (typeof part === 'string') parts.push(part);
+      else if (isPlainObject(part) && typeof part.text === 'string') parts.push(part.text);
+      else parts.push(presentValue(part).text);
+    }
+    return parts.join('\n');
+  }
+  return presentValue(content).text;
+}
+
+/* -------------------------------------------------------------- generic ---- */
+
+var CALL_HINTS = ['tool_use', 'tool_call', 'toolcall', 'function_call', 'action', 'invoke'];
+var RESULT_HINTS = ['tool_result', 'tool_response', 'observation', 'result', 'output', 'return'];
+
+// Best effort for logs in no dialect we know: recognise something rather than
+// refusing the file.
+function parseGeneric(entries) {
+  var steps = [];
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
+    if (typeof entry === 'string') {
+      steps.push(makeStep('note', { title: firstLine(entry) || '(empty)', text: entry }));
+      continue;
+    }
+    if (!isPlainObject(entry)) {
+      steps.push(makeStep('note', { title: describeType(entry) + ' at index ' + i, result: entry }));
+      continue;
+    }
+    var when = readTimestamp(entry);
+    var tag = String(entry.type || entry.kind || entry.event || entry.role || '').toLowerCase();
+    var name = pickString(entry, ['name', 'tool', 'tool_name', 'toolName', 'function', 'action']);
+    var input = pickValue(entry, ['input', 'arguments', 'args', 'parameters', 'params', 'tool_input']);
+    var output = pickValue(entry, ['result', 'output', 'observation', 'response', 'content', 'text', 'message']);
+    var id = pickString(entry, ['tool_use_id', 'tool_call_id', 'call_id', 'id']);
+
+    if (matchesAny(tag, CALL_HINTS) || (input !== undefined && output === undefined && name)) {
+      steps.push(makeStep('tool-call', { toolName: name || '(unnamed tool)', toolId: id, input: input, timestamp: when }));
+    } else if (matchesAny(tag, RESULT_HINTS) || (output !== undefined && name && input === undefined)) {
+      steps.push(makeStep('tool-result', {
+        toolName: name, toolId: id, result: maybeJSON(output),
+        isError: entry.is_error === true || entry.error === true || entry.status === 'error',
+        timestamp: when
+      }));
+    } else {
+      var kind = roleKind(tag);
+      if (kind === 'note' && matchesAny(tag, ['thought', 'text', 'message', 'answer', 'reason'])) kind = 'thought';
+      var text = typeof output === 'string' ? output : (output === undefined ? '' : presentValue(output).text);
+      steps.push(makeStep(kind, {
+        title: text ? firstLine(text) : (tag ? firstLine(tag, 60) : 'Entry ' + i),
+        text: text,
+        result: text ? undefined : entry,
+        timestamp: when
+      }));
+    }
+  }
+  return steps;
+}
+
+function matchesAny(tag, hints) {
+  for (var i = 0; i < hints.length; i++) if (tag.indexOf(hints[i]) !== -1) return true;
+  return false;
+}
+
+function pickString(obj, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var v = obj[keys[i]];
+    if (typeof v === 'string' && v) return v;
+    if (isPlainObject(v) && typeof v.name === 'string') return v.name;
+  }
+  return '';
+}
+
+function pickValue(obj, keys) {
+  for (var i = 0; i < keys.length; i++) if (obj[keys[i]] !== undefined) return obj[keys[i]];
+  return undefined;
+}
+
+/* ------------------------------------------------------------- dialects ---- */
+
+var DIALECTS = {
+  anthropic: { label: 'Anthropic messages', parse: parseAnthropic },
+  openai: { label: 'OpenAI chat', parse: parseOpenAI },
+  generic: { label: 'generic step list', parse: parseGeneric }
+};
+
+function detectDialect(messages) {
+  var sawRole = false;
+  for (var i = 0; i < messages.length && i < 500; i++) {
+    var m = messages[i];
+    if (!isPlainObject(m)) continue;
+    if (Array.isArray(m.tool_calls) || m.function_call !== undefined ||
+        m.role === 'tool' || typeof m.tool_call_id === 'string') return 'openai';
+    if (typeof m.role === 'string') sawRole = true;
+    if (Array.isArray(m.content)) {
+      for (var b = 0; b < m.content.length && b < 20; b++) {
+        var block = m.content[b];
+        if (isPlainObject(block) && (block.type === 'tool_use' || block.type === 'tool_result')) return 'anthropic';
+      }
+    }
+  }
+  return sawRole ? 'anthropic' : 'generic';
+}
+
 /* ---------------------------------------------------------------- entry ---- */
 
 function ParseError(message) { this.name = 'ParseError'; this.message = message; }
@@ -305,21 +475,20 @@ function parseTranscript(raw) {
   } catch (err) {
     throw new ParseError('That is not valid JSON: ' + firstLine(err && err.message ? err.message : String(err), 200));
   }
-  var list = asMessageList(data);
-  var steps = linkSteps(parseAnthropic(list.messages));
+  var messages = asMessageList(data);
+  var dialect = detectDialect(messages);
+  var steps = linkSteps(DIALECTS[dialect].parse(messages));
   if (steps.length === 0) throw new ParseError('Parsed as JSON, but no steps were found in it.');
-  return { steps: steps, dialect: list.dialect };
+  return { steps: steps, dialect: DIALECTS[dialect].label };
 }
 
 function asMessageList(data) {
-  if (Array.isArray(data)) return { messages: data, dialect: 'Anthropic messages' };
+  if (Array.isArray(data)) return data;
   if (isPlainObject(data)) {
     for (var i = 0; i < CONTAINER_KEYS.length; i++) {
-      if (Array.isArray(data[CONTAINER_KEYS[i]])) return { messages: data[CONTAINER_KEYS[i]], dialect: 'Anthropic messages' };
+      if (Array.isArray(data[CONTAINER_KEYS[i]])) return data[CONTAINER_KEYS[i]];
     }
-    if (typeof data.role === 'string' || data.content !== undefined) {
-      return { messages: [data], dialect: 'Anthropic messages' };
-    }
+    if (typeof data.role === 'string' || data.content !== undefined) return [data];
     throw new ParseError('Expected an array of messages, or an object with a "messages" array. This object has keys: ' +
       firstLine(Object.keys(data).slice(0, 8).join(', ') || '(none)', 120) + '.');
   }
