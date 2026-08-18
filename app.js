@@ -657,7 +657,10 @@ function renderDetail() {
 
 function select(index, moveFocus) {
   if (!state.steps.length) return;
-  var next = Math.max(0, Math.min(index, state.steps.length - 1));
+  // Selection is bounded by what is actually listed: beyond LIMITS.steps there
+  // is no option to focus.
+  var last = Math.max(0, Math.min(state.rendered, state.steps.length) - 1);
+  var next = Math.max(0, Math.min(index, last));
   state.selected = next;
   var options = els.timeline.children;
   for (var i = 0; i < options.length; i++) {
@@ -704,4 +707,27 @@ els.input.addEventListener('keydown', function (event) {
     event.preventDefault();
     loadText(els.input.value, 'Pasted');
   }
+});
+
+/* Listbox keys. Selection follows focus, which is the pattern a single-select
+   listbox is expected to use. */
+els.timeline.addEventListener('keydown', function (event) {
+  var next;
+  switch (event.key) {
+    case 'ArrowDown': case 'ArrowRight': next = state.selected + 1; break;
+    case 'ArrowUp': case 'ArrowLeft': next = state.selected - 1; break;
+    case 'PageDown': next = state.selected + 10; break;
+    case 'PageUp': next = state.selected - 10; break;
+    case 'Home': next = 0; break;
+    case 'End': next = state.rendered - 1; break;
+    default: return;
+  }
+  event.preventDefault();
+  select(next, true);
+});
+
+// Tabbing to the list lands on the selected option, not the container.
+els.timeline.addEventListener('focus', function () {
+  var current = els.timeline.children[state.selected];
+  if (current) current.focus();
 });
