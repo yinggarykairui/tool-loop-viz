@@ -49,12 +49,13 @@ function firstLine(text, max) {
    out — and the page claimed a clip — on values a fraction of the stated limit.
    `budget.clipped` is set only where something is actually left out. */
 function writeValue(value, depth, budget) {
-  if (budget.left <= 0) { budget.clipped = true; return '…'; }
+  if (budget.left <= 0) { budget.clipped = true; budget.chars = true; return '…'; }
   var out;
   if (value === null) { out = 'null'; }
   else if (typeof value === 'string') {
     if (value.length > budget.left) {
       budget.clipped = true;
+      budget.chars = true;
       out = JSON.stringify(value.slice(0, Math.max(0, budget.left))) + ' …';
     } else {
       out = JSON.stringify(value);
@@ -62,7 +63,7 @@ function writeValue(value, depth, budget) {
   }
   else if (typeof value === 'number' || typeof value === 'boolean') { out = String(value); }
   else if (typeof value !== 'object') { out = String(value); }
-  else if (depth >= LIMITS.depth) { budget.clipped = true; out = Array.isArray(value) ? '[ ... ]' : '{ ... }'; }
+  else if (depth >= LIMITS.depth) { budget.clipped = true; budget.deep = true; out = Array.isArray(value) ? '[ ... ]' : '{ ... }'; }
   else {
     var pad = '  '.repeat(depth + 1);
     var close = '  '.repeat(depth);
@@ -81,6 +82,8 @@ function writeValue(value, depth, budget) {
     }
     if (i < count) {
       budget.clipped = true;
+      // Which cap stopped the loop decides what the page is allowed to claim.
+      if (i >= LIMITS.items) budget.wide = true; else budget.chars = true;
       parts.push(pad + '... ' + (count - i) + (isArray ? ' more items' : ' more keys'));
     }
     return (isArray ? '[\n' : '{\n') + parts.join(',\n') + '\n' + close + (isArray ? ']' : '}');
@@ -106,9 +109,12 @@ function presentValue(value) {
       fullLength: value.length
     };
   }
-  var budget = { left: LIMITS.value, clipped: false };
+  var budget = { left: LIMITS.value, clipped: false, chars: false, deep: false, wide: false };
   var text = writeValue(value, 0, budget);
-  return { text: displayText(text), kind: 'json', truncated: budget.clipped };
+  return {
+    text: displayText(text), kind: 'json', truncated: budget.clipped,
+    why: { chars: budget.chars, deep: budget.deep, wide: budget.wide }
+  };
 }
 
 /* --------------------------------------------------------------- steps ---- */
@@ -221,7 +227,17 @@ function flattenContent(content) {
       if (isPlainObject(block) && typeof block.text === 'string') texts.push(block.text);
       else onlyText = false;
     }
-    if (onlyText && texts.length) return texts.join('\n');
+    if (onlyText && texts.length) {
+      // The cap on blocks read per result is real, so it is said here, at the
+      // point the text stops, rather than leaving the reader to believe the
+      // result ended at block 200.
+      if (content.length > LIMITS.items) {
+        texts.push('… ' + (content.length - LIMITS.items) + ' further content blocks in this result were not read (limit ' +
+          LIMITS.items + ').');
+      }
+      return texts.join('\n');
+    }
+    // A mixed array is handed on whole; the formatter marks its own elisions.
     return content;
   }
   return content;
@@ -768,6 +784,22 @@ function formatDuration(ms) {
   return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
 }
 
+/* Names the cap that actually fired. Three can, and they leave out wildly
+   different amounts, so the note says which rather than asserting a character
+   count the value never came near. */
+function clipReason(why) {
+  var reasons = [];
+  if (why) {
+    if (why.deep) reasons.push('it nests deeper than ' + LIMITS.depth + ' levels');
+    if (why.wide) reasons.push('some levels hold more than ' + LIMITS.items + ' items');
+    if (why.chars) reasons.push('it is longer than ' + LIMITS.value.toLocaleString() + ' characters');
+  }
+  if (!reasons.length) return 'Parts of this value were left out, and each is marked where it was cut.';
+  var list = reasons.length === 1 ? reasons[0] :
+    reasons.slice(0, -1).join(', ') + ' and ' + reasons[reasons.length - 1];
+  return 'Parts of this value were left out, each marked where it was cut: ' + list + '.';
+}
+
 /* Renders a value into a slot. Clamping is added in a later pass, once the slot
    is in the document and its real height is known. */
 function appendValue(parent, value, emptyLabel) {
@@ -784,12 +816,13 @@ function appendValue(parent, value, emptyLabel) {
   if (shown.truncated) {
     // Stated as what was loaded, not as what is on screen: the old wording
     // claimed a clip after the reader had opened the value, which read as a lie.
+    // And it named the character budget whichever cap had actually fired, so a
+    // 180-character object 30 levels deep was reported as 100,000 characters.
     slot.dataset.clipped = 'true';
     slot.appendChild(el('p', 'note', shown.fullLength ?
       'Only the first ' + LIMITS.value.toLocaleString() + ' characters of ' +
         shown.fullLength.toLocaleString() + ' were loaded; the rest is not on this page.' :
-      'This value was too large to render whole: about ' + LIMITS.value.toLocaleString() +
-        ' characters of it were loaded, and the parts left out are marked in place.'));
+      clipReason(shown.why)));
   }
   parent.appendChild(slot);
 }
