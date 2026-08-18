@@ -13,8 +13,7 @@
   --rule: #8f8f89;           /* 3.25:1 on surface */
   --rule-strong: #7f7f79;    /* 4.03:1 on surface */
   --accent: #3d5a80;
-  --accent-soft: #7a90ae;    /* selection fill, 3.27:1 on surface */
-  --select-ink: #1b1b1a;     /* 5.28:1 on the selection fill */
+  --select-fill: #e9eff7;    /* selection tint; the bar carries the 3:1 */
   --hover: #f0f0ec;
   --danger: #8c3b2f;
   --danger-soft: #f7edeb;
@@ -36,8 +35,7 @@
     --rule: #656e7a;         /* 3.19:1 on surface */
     --rule-strong: #7a828e;  /* 4.25:1 on surface */
     --accent: #9db9dc;
-    --accent-soft: #69727e;  /* selection fill, 3.39:1 on surface */
-    --select-ink: #ffffff;   /* 4.87:1 on the selection fill */
+    --select-fill: #212630;  /* selection tint; the bar carries the 3:1 */
     --hover: #26282d;
     --danger: #e2938a;
     --danger-soft: #33231f;
@@ -249,22 +247,20 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
   position: relative;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--rule);
-  border-left: 3px solid transparent;
+  border-left: 4px solid transparent;
   cursor: pointer;
   min-width: 0;
   transition: background-color 120ms ease;
 }
 .step:last-child { border-bottom: none; }
 .step:hover { background: var(--hover); }
-.step[aria-selected="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
-/* On the selection fill every label reads in the one ink measured against it. */
-.step[aria-selected="true"],
-.step[aria-selected="true"] .step-index,
-.step[aria-selected="true"] .step-kind,
-.step[aria-selected="true"] .step-pair,
-.step[aria-selected="true"] .step-flag,
-.step[aria-selected="true"] .step-title { color: var(--select-ink); }
-.step[aria-selected="true"] .step-flag { border-color: var(--select-ink); }
+/* The selection is carried by the bar, not by the fill. A fill saturated
+   enough to clear 3:1 on its own was the loudest thing on the page in dark
+   mode, and forcing one ink over it switched off the very kind colour the row
+   you are reading is there to show. The bar clears 3:1 against the surface on
+   its own; the fill is a tint, so every label keeps its own hue and its own
+   measured ratio. */
+.step[aria-selected="true"] { background: var(--select-fill); border-left-color: var(--accent); }
 .step:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 .step-head { display: flex; gap: 0.5rem; align-items: baseline; }
