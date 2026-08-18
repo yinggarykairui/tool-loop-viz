@@ -12,7 +12,9 @@ Takes a JSON transcript of an LLM agent run and lays it out as a timeline you
 can step through: what the model said, which tool it called with which
 arguments, what came back, and what it said next. It reads Anthropic Messages
 format, OpenAI chat format with `tool_calls`, and — as a fallback — a flat array
-of step objects. Tool results are matched to the call that produced them.
+of step objects. Where a log carries the ids to match them by, tool results
+are paired with the call that produced them; where it does not, the step says
+so rather than guessing.
 
 It is bounded on purpose, because a transcript can be enormous: it lists the
 first 400 steps of a run, reads 200 content blocks or tool calls per message,
