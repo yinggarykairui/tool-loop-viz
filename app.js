@@ -990,11 +990,17 @@ function isNarrow() { return window.matchMedia('(max-width: 46rem)').matches; }
 
    Nothing moves while both are already visible: an arrow key that is only
    walking rows inside the list should not drag the page about. */
+var revealTarget = -1;
+var revealAsked = 0;
+
 function revealPair(current) {
   if (!isNarrow()) return;
   var vh = window.innerHeight;
   var d = els.detail.getBoundingClientRect();
-  var detailShown = d.top >= 0 && d.top < vh - 40;
+  // A detail pane whose top edge has just crept above the fold is not shown;
+  // enough of it has to be on screen to read the kind and the heading.
+  var enough = Math.min(140, vh / 3);
+  var detailShown = d.top >= 0 && d.top < vh - enough;
   var rowShown = true;
   if (current) {
     var r = current.getBoundingClientRect();
@@ -1002,8 +1008,15 @@ function revealPair(current) {
   }
   if (detailShown && rowShown) return;
   var anchor = document.querySelector('.panes') || els.detail;
-  var top = anchor.getBoundingClientRect().top + window.pageYOffset - 8;
-  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  var top = Math.max(0, anchor.getBoundingClientRect().top + window.pageYOffset - 8);
+  // A held arrow key fires faster than a smooth scroll finishes, and each key
+  // measured the half-finished scroll and asked for another one on top of it.
+  // The same destination asked for twice in a row is asked for once.
+  var now = Date.now();
+  if (Math.abs(top - revealTarget) < 2 && now - revealAsked < 600) return;
+  revealTarget = top;
+  revealAsked = now;
+  window.scrollTo({ top: top, behavior: 'smooth' });
 }
 
 function select(index, moveFocus, reveal) {

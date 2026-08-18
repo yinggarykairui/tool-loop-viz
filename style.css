@@ -53,6 +53,12 @@
 html, body { margin: 0; padding: 0; }
 
 body {
+  /* The detail pane is rebuilt on every selection and its height changes with
+     it. Left to the browser's scroll anchoring, that resize dragged the page
+     under the reader by however much the pane had grown — up to 300px per
+     arrow key. Nothing on this page loads in above the fold, so there is
+     nothing for anchoring to earn back. */
+  overflow-anchor: none;
   background: var(--bg);
   color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
