@@ -531,13 +531,20 @@ function parseGeneric(entries) {
     /* The key an entry files its payload under names the entry as surely as a
        type tag does: `observation` and `output` are results wherever they sit.
        Only where nothing else claims the entry, though — a role that names a
-       speaker wins, so an assistant message is never read as a tool result. */
+       speaker wins, so an assistant message is never read as a tool result.
+       `speaks` guards *every* disjunct below that infers a result from shape
+       rather than from a type tag. It once guarded only `resultKey`, and the
+       bare-`name` disjunct then read a canonical OpenAI transcript — where
+       `name` on a message is a documented field — as four tool results with
+       zero tool calls, because a wrong parse that labels four steps outscores
+       a right one that labels three. */
     var speaks = roleKind(String(entry.role || body.role || '').toLowerCase()) !== 'note';
     var resultKey = !speaks && outputKey && matchesAny(outputKey, RESULT_HINTS);
 
     if (matchesAny(tag, CALL_HINTS) || (input !== undefined && output === undefined && name)) {
       steps.push(makeStep('tool-call', { toolName: name || '(unnamed tool)', toolId: id, input: input, timestamp: when }));
-    } else if (matchesAny(tag, RESULT_HINTS) || resultKey || (output !== undefined && name && input === undefined)) {
+    } else if (matchesAny(tag, RESULT_HINTS) || resultKey ||
+               (!speaks && output !== undefined && name && input === undefined)) {
       steps.push(makeStep('tool-result', {
         toolName: name, toolId: id, result: maybeJSON(output),
         isError: entry.is_error === true || entry.error === true || entry.status === 'error' ||
