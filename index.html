@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tool-loop-viz</title>
+<!-- Empty icon: keeps file:// loads free of a favicon request. -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="drop-veil" id="drop-veil" hidden aria-hidden="true"><span>Drop a .json transcript</span></div>
+
+<header class="topbar">
+  <h1>tool-loop-viz</h1>
+  <p class="tagline">Paste an agent transcript. Walk the tool loop one step at a time.</p>
+</header>
+
+<main>
+  <section class="input-panel">
+    <label class="field-label" for="input">Transcript JSON</label>
+    <textarea id="input" spellcheck="false" autocapitalize="off" autocomplete="off"
+      placeholder="Anthropic messages, OpenAI chat messages, or a flat list of steps."></textarea>
+    <div class="controls">
+      <button type="button" id="render-btn">Render</button>
+      <button type="button" id="example-btn" class="ghost">Load example</button>
+      <span class="hint">Drop a .json file anywhere on the page. Ctrl or Cmd + Enter renders.</span>
+    </div>
+    <p class="status" id="status" role="status"></p>
+  </section>
+
+  <section class="summary" id="summary" aria-label="Run summary"></section>
+
+  <div class="panes">
+    <section class="pane">
+      <h2 id="timeline-heading">Timeline</h2>
+      <ul class="timeline" id="timeline" role="listbox" aria-labelledby="timeline-heading" tabindex="-1"></ul>
+      <p class="note" id="timeline-note" hidden></p>
+    </section>
+    <section class="pane" aria-labelledby="detail-heading">
+      <h2 id="detail-heading">Step detail</h2>
+      <div id="detail" class="detail"></div>
+    </section>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

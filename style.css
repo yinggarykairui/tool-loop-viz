@@ -1,0 +1,293 @@
+/* Palette is defined once per scheme; everything else reads the variables. */
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbf9;
+  --surface: #ffffff;
+  --ink: #1b1b1a;
+  --ink-soft: #5c5c58;
+  --ink-faint: #8b8b85;
+  --rule: #e2e1dc;
+  --rule-strong: #cfcec7;
+  --accent: #3d5a80;
+  --accent-soft: #eef2f7;
+  --danger: #8c3b2f;
+  --danger-soft: #f7edeb;
+  --focus: #2f6fb3;
+  --kind-user: #6b6b64;
+  --kind-thought: #3d5a80;
+  --kind-call: #5a5030;
+  --kind-result: #2f5d4a;
+  --kind-final: #4a3663;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a;
+    --surface: #1d1f23;
+    --ink: #e7e6e2;
+    --ink-soft: #a9a8a2;
+    --ink-faint: #7e7d78;
+    --rule: #2e3137;
+    --rule-strong: #414449;
+    --accent: #9db9dc;
+    --accent-soft: #232a34;
+    --danger: #e2938a;
+    --danger-soft: #33231f;
+    --focus: #7fb0e8;
+    --kind-user: #a5a49d;
+    --kind-thought: #9db9dc;
+    --kind-call: #d3bd85;
+    --kind-result: #8dc4a9;
+    --kind-final: #c0a8dd;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  /* Long unbroken tokens in hostile input must never widen the page. */
+  overflow-wrap: anywhere;
+}
+
+.topbar, main { max-width: 76rem; margin: 0 auto; padding: 0 clamp(0.75rem, 3vw, 2rem); }
+
+.topbar { padding-top: clamp(1.5rem, 4vw, 2.75rem); }
+
+h1 {
+  font-size: clamp(1.25rem, 1rem + 1.2vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.tagline { margin: 0.35rem 0 0; color: var(--ink-soft); font-size: 0.95rem; }
+
+h2 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  color: var(--ink-faint);
+  margin: 0 0 0.6rem;
+}
+
+main { padding-bottom: 4rem; }
+
+.input-panel { margin-top: clamp(1.25rem, 3vw, 2rem); }
+
+.field-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-faint);
+  margin-bottom: 0.4rem;
+}
+
+textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  resize: vertical;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.6rem;
+}
+
+button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+
+button.ghost { background: transparent; color: var(--accent); }
+
+button.link {
+  background: none;
+  border: none;
+  border-bottom: 1px solid currentColor;
+  border-radius: 0;
+  color: var(--accent);
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.hint { color: var(--ink-faint); font-size: 0.8rem; }
+
+.status { min-height: 1.4rem; margin: 0.55rem 0 0; font-size: 0.85rem; color: var(--ink-soft); }
+.status.error { color: var(--danger); }
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  margin-top: 1.25rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.summary:empty { display: none; }
+.summary .metric-value { color: var(--ink); font-variant-numeric: tabular-nums; }
+.summary .metric-label { color: var(--ink-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.summary .metric { display: flex; flex-direction: column; min-width: 0; }
+
+/* Continuous layout: one column until the container can hold two 20rem tracks,
+   then two. No hand-picked breakpoint to be wrong about. */
+.panes {
+  display: grid;
+  gap: clamp(1rem, 3vw, 2rem);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  margin-top: 1.5rem;
+  align-items: start;
+}
+
+.pane { min-width: 0; }
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+  max-height: clamp(16rem, 55vh, 34rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.step {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--rule);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  min-width: 0;
+}
+.step:last-child { border-bottom: none; }
+.step[aria-selected="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
+.step:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+.step-head { display: flex; gap: 0.5rem; align-items: baseline; }
+.step-index { color: var(--ink-faint); font-size: 0.72rem; font-variant-numeric: tabular-nums; min-width: 1.6rem; }
+.step-kind { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+.step-title {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  /* One line in the list; the detail pane carries the full value. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kind-user .step-kind { color: var(--kind-user); }
+.kind-thought .step-kind { color: var(--kind-thought); }
+.kind-tool-call .step-kind { color: var(--kind-call); }
+.kind-tool-result .step-kind { color: var(--kind-result); }
+.kind-final .step-kind { color: var(--kind-final); }
+.kind-note .step-kind, .kind-system .step-kind { color: var(--ink-faint); }
+.step.is-error .step-kind { color: var(--danger); }
+
+.detail {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: clamp(0.8rem, 2vw, 1.15rem);
+  min-width: 0;
+}
+
+.detail-kind { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.09em; font-weight: 600; color: var(--ink-faint); }
+.detail-title { font-size: 1rem; font-weight: 600; margin: 0.2rem 0 0; }
+.detail-meta { color: var(--ink-faint); font-size: 0.78rem; margin: 0.25rem 0 0; }
+.detail-section { margin-top: 1.1rem; }
+.detail-section > h3 {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--ink-faint); font-weight: 600; margin: 0 0 0.35rem;
+}
+
+.error-flag {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* Clamp bounds the idle height only. The class is applied at render time solely
+   when the content overflows AND a reveal control exists, so nothing is ever
+   clipped without a way to open it. */
+.value-slot { position: relative; }
+.value-slot.clamped .value-body { max-height: 12rem; overflow: hidden; }
+.value-slot.clamped .value-body::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2.5rem;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  pointer-events: none;
+}
+.value-body { position: relative; min-width: 0; }
+
+pre.value, p.value {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  /* Contain any bidi control characters that survive sanitising. */
+  unicode-bidi: isolate;
+}
+
+.value-toggle { margin-top: 0.45rem; }
+
+.note { color: var(--ink-faint); font-size: 0.8rem; margin: 0.5rem 0 0; }
+.empty { color: var(--ink-faint); font-size: 0.9rem; }
+
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 2px dashed var(--accent);
+  color: var(--accent);
+  font-size: 0.95rem;
+}
+.drop-veil[hidden] { display: none; }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
