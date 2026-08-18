@@ -221,7 +221,7 @@ function parseAnthropic(messages) {
       } else if (type === 'tool_result' || type === 'web_search_tool_result') {
         steps.push(makeStep('tool-result', {
           toolId: typeof block.tool_use_id === 'string' ? block.tool_use_id : '',
-          result: flattenContent(block.content),
+          result: maybeJSON(flattenContent(block.content)),
           isError: block.is_error === true,
           timestamp: when
         }));
@@ -881,3 +881,166 @@ window.addEventListener('drop', function (event) {
   };
   reader.readAsText(file);
 });
+
+/* --------------------------------------------------------------- example ---- */
+
+/* A hand-written transcript in Anthropic Messages format, kept inline so the
+   page works when opened directly from disk (fetch is blocked on file://).
+   It exercises the shapes the viewer has to handle: several tool calls, a
+   failing result, a long result worth clamping, and per-message timestamps. */
+var EXAMPLE_TRANSCRIPT = [
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:14:03Z",
+    "content": "The nightly orders_export job reported success but wrote about 40 percent fewer rows than Sunday. Work out what changed."
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:14:07Z",
+    "content": [
+      { "type": "text", "text": "I will start from the run history to see when the drop began, then read the log for the first bad run." },
+      { "type": "tool_use", "id": "toolu_01aRun", "name": "list_job_runs", "input": { "job": "orders_export", "limit": 5 } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:14:09Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_01aRun",
+        "content": "[{\"run_id\":\"2026-08-17T02:00Z\",\"status\":\"success\",\"rows\":184220,\"duration_s\":412},{\"run_id\":\"2026-08-16T02:00Z\",\"status\":\"success\",\"rows\":183914,\"duration_s\":408},{\"run_id\":\"2026-08-15T02:00Z\",\"status\":\"success\",\"rows\":306771,\"duration_s\":655},{\"run_id\":\"2026-08-14T02:00Z\",\"status\":\"success\",\"rows\":305902,\"duration_s\":651},{\"run_id\":\"2026-08-13T02:00Z\",\"status\":\"success\",\"rows\":304118,\"duration_s\":649}]"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:14:15Z",
+    "content": [
+      { "type": "text", "text": "The drop starts with the run on 16 August, and duration fell with it, so rows are being excluded rather than lost late in the write. Reading that run log." },
+      { "type": "tool_use", "id": "toolu_02bLog", "name": "fetch_run_log", "input": { "run_id": "2026-08-16T02:00Z", "tail_lines": 40 } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:14:18Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_02bLog",
+        "content": "02:00:01 INFO  orders_export starting, config revision 8f21c04\n02:00:01 INFO  source: warehouse.orders (partitioned by order_date)\n02:00:02 INFO  applying filter set: default_filters, region_filters, status_filters\n02:00:02 WARN  status_filters changed since last run (checksum 41ba -> 9d07)\n02:00:03 INFO  planning scan over 41 partitions\n02:00:44 INFO  scanned 41 partitions, 306,880 candidate rows\n02:00:44 INFO  filter default_filters removed 109 rows\n02:00:45 INFO  filter region_filters removed 0 rows\n02:01:02 INFO  filter status_filters removed 122,551 rows\n02:01:02 INFO  122,551 rows removed by predicate status IN ('complete')\n02:01:03 INFO  183,914 rows survive filtering\n02:01:03 INFO  writing to s3://exports/orders/2026-08-16/\n02:03:51 INFO  wrote part-00000 of 18\n02:04:33 INFO  wrote part-00017 of 18\n02:06:44 INFO  checksum manifest written\n02:06:48 INFO  downstream notification sent to analytics-etl\n02:06:48 INFO  orders_export finished status=success rows=183914 duration_s=408\n02:06:48 DEBUG memory high-water 2.1 GiB, spill events 0\n02:06:48 DEBUG partition skew ratio 1.12\n02:06:49 DEBUG filter timings: default 0.4s, region 0.2s, status 17.1s\n02:06:49 DEBUG status filter predicate compiled from config key export.status_allowlist\n02:06:49 DEBUG export.status_allowlist resolved to ['complete']\n02:06:49 DEBUG previous resolved value on 2026-08-15 was ['complete','shipped','partially_shipped']\n02:06:50 INFO  run record persisted"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:14:26Z",
+    "content": [
+      { "type": "text", "text": "The status filter now allows only 'complete', where it previously allowed 'shipped' and 'partially_shipped' as well. That accounts for roughly the missing volume. Checking the counts directly." },
+      { "type": "tool_use", "id": "toolu_03cSql", "name": "query_warehouse", "input": { "sql": "select status, count(*) as rows from orders where order_date >= '2026-08-10' group by status order by rows desc", "timeout_s": 60 } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:14:41Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_03cSql",
+        "content": "[{\"status\":\"complete\",\"rows\":184220},{\"status\":\"shipped\",\"rows\":98330},{\"status\":\"partially_shipped\",\"rows\":24221},{\"status\":\"cancelled\",\"rows\":6104}]"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:14:47Z",
+    "content": [
+      { "type": "text", "text": "122,551 excluded rows matches shipped plus partially_shipped exactly. Confirming the config change is the only difference before I attribute it." },
+      { "type": "tool_use", "id": "toolu_04dCfg", "name": "inspect_config", "input": { "key": "export.status_allowlist", "history": 3 } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:14:49Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_04dCfg",
+        "content": "[{\"revision\":\"8f21c04\",\"value\":[\"complete\"],\"changed_at\":\"2026-08-15T18:22:11Z\",\"changed_by\":\"deploy-bot\",\"pr\":\"etl-config#412\"},{\"revision\":\"7c02af9\",\"value\":[\"complete\",\"shipped\",\"partially_shipped\"],\"changed_at\":\"2026-05-02T09:41:00Z\"},{\"revision\":\"6be1120\",\"value\":[\"complete\",\"shipped\"],\"changed_at\":\"2026-01-18T11:05:44Z\"}]"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:14:55Z",
+    "content": [
+      { "type": "text", "text": "Config revision 8f21c04 landed on 15 August through etl-config#412. Running the export validation suite to see whether it flags the narrowed allowlist." },
+      { "type": "tool_use", "id": "toolu_05eVal", "name": "run_validation", "input": { "suite": "orders_export", "against": "2026-08-16T02:00Z" } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:15:12Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_05eVal",
+        "is_error": true,
+        "content": "ValidationRunnerError: connection refused by validation-runner.internal:8443 after 3 attempts (15.2s). The runner pool was drained for maintenance window MW-2291 and has no capacity until 06:00Z. No assertions were evaluated."
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:15:16Z",
+    "content": [
+      { "type": "text", "text": "The validation runner is down for maintenance, so I cannot get an independent check that way. I will read the pull request that changed the config instead." },
+      { "type": "tool_use", "id": "toolu_06fPr", "name": "read_pull_request", "input": { "repo": "etl-config", "number": 412 } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:15:20Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_06fPr",
+        "content": "{\"number\":412,\"title\":\"Restrict finance reconciliation export to completed orders\",\"merged_at\":\"2026-08-15T18:22:11Z\",\"files\":[\"exports/finance_reconciliation.yaml\",\"exports/shared_defaults.yaml\"],\"body\":\"Finance only reconciles completed orders. Narrowing the allowlist for their export.\",\"reviewers\":[\"m.okafor\"]}"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:15:28Z",
+    "content": [
+      { "type": "text", "text": "The change was aimed at the finance export but was written into shared_defaults.yaml, which orders_export also reads. Confirming that inheritance." },
+      { "type": "tool_use", "id": "toolu_07gFile", "name": "read_file", "input": { "path": "exports/orders_export.yaml" } }
+    ]
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-08-17T02:15:31Z",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "toolu_07gFile",
+        "content": "name: orders_export\nextends: shared_defaults\nsource: warehouse.orders\npartition: order_date\nfilters:\n  - default_filters\n  - region_filters\n  - status_filters   # inherited from shared_defaults\ndestination: s3://exports/orders/\nschedule: 0 2 * * *"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-08-17T02:15:39Z",
+    "content": "orders_export did not lose rows; it started excluding them. etl-config#412 narrowed export.status_allowlist to ['complete'] in exports/shared_defaults.yaml on 15 August, intending to change only the finance reconciliation export. orders_export extends shared_defaults, so it inherited the narrower filter and dropped 122,551 shipped and partially_shipped rows, which matches the warehouse counts exactly. The fix is to move the allowlist override into exports/finance_reconciliation.yaml and leave the shared default as it was. I could not run the validation suite to confirm: the runner is drained until 06:00Z for maintenance window MW-2291."
+  }
+];
+
+function loadExample() {
+  var text = JSON.stringify(EXAMPLE_TRANSCRIPT, null, 2);
+  els.input.value = text;
+  loadText(text, 'Bundled example');
+}
+
+document.getElementById('example-btn').addEventListener('click', loadExample);
+
+loadExample();
