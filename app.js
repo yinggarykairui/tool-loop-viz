@@ -501,3 +501,207 @@ function describeType(v) {
   if (typeof v === 'string') return 'a string';
   return 'a ' + typeof v;
 }
+
+/* ------------------------------------------------------------ rendering ---- */
+
+/* Everything below builds DOM nodes by hand. Transcript text reaches the page
+   only through textContent, so hostile markup in a log is inert. */
+
+var state = { steps: [], selected: 0, rendered: 0, dialect: '' };
+
+var els = {
+  input: document.getElementById('input'),
+  status: document.getElementById('status'),
+  summary: document.getElementById('summary'),
+  timeline: document.getElementById('timeline'),
+  timelineNote: document.getElementById('timeline-note'),
+  detail: document.getElementById('detail'),
+  dropVeil: document.getElementById('drop-veil')
+};
+
+function el(tag, className, text) {
+  var node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+}
+
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+function setStatus(message, isError) {
+  els.status.textContent = message;
+  els.status.classList.toggle('error', !!isError);
+}
+
+function formatTime(ms) {
+  var d = new Date(ms);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(11, 19) + 'Z';
+}
+
+function formatDuration(ms) {
+  if (ms < 1000) return ms + ' ms';
+  if (ms < 60000) return (ms / 1000).toFixed(1) + ' s';
+  var mins = Math.floor(ms / 60000);
+  return mins + ' m ' + Math.round((ms % 60000) / 1000) + ' s';
+}
+
+/* Renders a value into a slot. Clamping is added in a later pass, once the slot
+   is in the document and its real height is known. */
+function appendValue(parent, value, emptyLabel) {
+  var shown = presentValue(value);
+  if (shown.text === '') {
+    parent.appendChild(el('p', 'value empty', emptyLabel || '(empty)'));
+    return;
+  }
+  var slot = el('div', 'value-slot');
+  var body = el('div', 'value-body');
+  body.appendChild(el('pre', 'value', shown.text));
+  slot.appendChild(body);
+  if (shown.truncated) {
+    var note = 'Value clipped at ' + LIMITS.value.toLocaleString() + ' characters';
+    if (shown.fullLength) note += ' of ' + shown.fullLength.toLocaleString();
+    slot.appendChild(el('p', 'note', note + '.'));
+  }
+  parent.appendChild(slot);
+}
+
+function renderTimeline() {
+  clear(els.timeline);
+  var limit = Math.min(state.steps.length, LIMITS.steps);
+  state.rendered = limit;
+  for (var i = 0; i < limit; i++) {
+    els.timeline.appendChild(buildOption(state.steps[i]));
+  }
+  if (state.steps.length > limit) {
+    els.timelineNote.textContent = 'Showing the first ' + limit + ' steps; ' +
+      (state.steps.length - limit) + ' further steps were parsed but are not listed.';
+    els.timelineNote.hidden = false;
+  } else {
+    els.timelineNote.textContent = '';
+    els.timelineNote.hidden = true;
+  }
+}
+
+function buildOption(step) {
+  var li = el('li', 'step kind-' + step.kind + (step.isError ? ' is-error' : ''));
+  li.id = 'step-' + step.index;
+  li.setAttribute('role', 'option');
+  li.setAttribute('aria-selected', 'false');
+  li.tabIndex = -1;
+
+  var head = el('div', 'step-head');
+  head.appendChild(el('span', 'step-index', String(step.index + 1)));
+  head.appendChild(el('span', 'step-kind', KIND_LABEL[step.kind] || 'Step'));
+  li.appendChild(head);
+  li.appendChild(el('span', 'step-title', step.title));
+
+  li.addEventListener('click', function () { select(step.index, true); });
+  return li;
+}
+
+function renderDetail() {
+  clear(els.detail);
+  var step = state.steps[state.selected];
+  if (!step) {
+    els.detail.appendChild(el('p', 'empty', 'No step selected.'));
+    return;
+  }
+  els.detail.appendChild(el('p', 'detail-kind', KIND_LABEL[step.kind] || 'Step'));
+  els.detail.appendChild(el('p', 'detail-title', step.toolName || step.title));
+
+  var meta = ['Step ' + (step.index + 1) + ' of ' + state.steps.length];
+  if (step.toolId) meta.push('id ' + firstLine(step.toolId, 60));
+  if (step.timestamp !== null) meta.push(formatTime(step.timestamp));
+  els.detail.appendChild(el('p', 'detail-meta', meta.join('  ·  ')));
+
+  if (step.isError) els.detail.appendChild(el('span', 'error-flag', 'error result'));
+
+  if (step.kind === 'tool-call') {
+    section('Input', function (body) { appendValue(body, step.input, '(no input)'); });
+  }
+  if (step.kind === 'tool-result') {
+    section('Result', function (body) { appendValue(body, step.result, '(empty result)'); });
+  }
+  if (step.text !== undefined) {
+    section('Text', function (body) { appendValue(body, step.text, '(no text)'); });
+  }
+  if (step.kind === 'note' && step.result !== undefined) {
+    section('Raw entry', function (body) { appendValue(body, step.result); });
+  }
+
+  if (step.pairIndex >= 0) {
+    var other = state.steps[step.pairIndex];
+    section(step.kind === 'tool-call' ? 'Result' : 'Call', function (body) {
+      var link = el('button', 'link', (step.kind === 'tool-call' ? 'Go to result at step ' : 'Go to call at step ') + (other.index + 1));
+      link.type = 'button';
+      link.addEventListener('click', function () { select(other.index, true); });
+      body.appendChild(link);
+    });
+  } else if (step.kind === 'tool-call') {
+    section('Result', function (body) { body.appendChild(el('p', 'note', 'No result for this call appears in the log.')); });
+  }
+
+  if (step.notes.length) {
+    section('Notes', function (body) {
+      for (var i = 0; i < step.notes.length; i++) body.appendChild(el('p', 'note', step.notes[i]));
+    });
+  }
+
+  function section(title, build) {
+    var wrap = el('section', 'detail-section');
+    wrap.appendChild(el('h3', null, title));
+    build(wrap);
+    els.detail.appendChild(wrap);
+  }
+}
+
+function select(index, moveFocus) {
+  if (!state.steps.length) return;
+  var next = Math.max(0, Math.min(index, state.steps.length - 1));
+  state.selected = next;
+  var options = els.timeline.children;
+  for (var i = 0; i < options.length; i++) {
+    var isSelected = i === next;
+    options[i].setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    options[i].tabIndex = isSelected ? 0 : -1;
+  }
+  var current = options[next];
+  if (current) {
+    current.scrollIntoView({ block: 'nearest' });
+    if (moveFocus) current.focus();
+  }
+  renderDetail();
+}
+
+function showRun(result, note) {
+  state.steps = result.steps;
+  state.dialect = result.dialect;
+  state.selected = 0;
+  renderTimeline();
+  select(0, false);
+  setStatus(note || (result.steps.length + ' steps from a ' + result.dialect + ' transcript.'), false);
+}
+
+// A failed parse must never wipe a run that is already on screen.
+function loadText(raw, label) {
+  try {
+    var result = parseTranscript(raw);
+    showRun(result, (label ? label + ': ' : '') + result.steps.length + ' steps, read as ' + result.dialect + '.');
+  } catch (err) {
+    var message = err && err.message ? err.message : String(err);
+    setStatus(message + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+  }
+}
+
+/* ----------------------------------------------------------------- boot ---- */
+
+document.getElementById('render-btn').addEventListener('click', function () {
+  loadText(els.input.value, 'Pasted');
+});
+
+els.input.addEventListener('keydown', function (event) {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    loadText(els.input.value, 'Pasted');
+  }
+});
