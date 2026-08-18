@@ -708,7 +708,9 @@ var els = {
   timeline: document.getElementById('timeline'),
   timelineNote: document.getElementById('timeline-note'),
   detail: document.getElementById('detail'),
-  dropVeil: document.getElementById('drop-veil')
+  dropVeil: document.getElementById('drop-veil'),
+  renderBtn: document.getElementById('render-btn'),
+  exampleBtn: document.getElementById('example-btn')
 };
 
 function el(tag, className, text) {
@@ -886,14 +888,43 @@ function showRun(result, note) {
 }
 
 // A failed parse must never wipe a run that is already on screen.
-function loadText(raw, label) {
+function runLoad(raw, label, extra) {
   try {
     var result = parseTranscript(raw);
-    showRun(result, (label ? label + ': ' : '') + result.steps.length + ' steps, read as ' + result.dialect + '.');
+    var count = result.steps.length;
+    showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
+      ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''));
   } catch (err) {
     var message = err && err.message ? err.message : String(err);
     setStatus(message + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
   }
+}
+
+// Parsing a multi-megabyte transcript blocks the thread for seconds. The busy
+// state is painted first and the work runs on the next frame; the controls are
+// disabled while it runs, so an impatient second click cannot queue a second
+// parse on top of the first.
+var BUSY_CHARS = 100000;
+var busyNow = false;
+
+function setBusy(on) {
+  busyNow = on;
+  els.renderBtn.disabled = on;
+  els.exampleBtn.disabled = on;
+  document.body.classList.toggle('is-busy', on);
+  els.status.classList.toggle('busy', on);
+}
+
+function loadText(raw, label, extra) {
+  if (busyNow) return;
+  if (typeof raw !== 'string' || raw.length <= BUSY_CHARS) { runLoad(raw, label, extra); return; }
+  setBusy(true);
+  setStatus('Reading ' + (label || 'input') + ' — ' + raw.length.toLocaleString() + ' characters…', false);
+  requestAnimationFrame(function () {
+    setTimeout(function () {
+      try { runLoad(raw, label, extra); } finally { setBusy(false); }
+    }, 0);
+  });
 }
 
 /* ----------------------------------------------------------------- boot ---- */
@@ -1038,28 +1069,65 @@ function renderSummary() {
 /* ---------------------------------------------------------- file dropping ---- */
 
 var dragDepth = 0;
+var dragWatchdog = null;
 
 function showVeil(show) {
   els.dropVeil.hidden = !show;
+  // Decorative while hidden; real content while shown, so it stops claiming to
+  // be hidden from assistive technology at the moment it covers the page.
+  if (show) els.dropVeil.removeAttribute('aria-hidden');
+  else els.dropVeil.setAttribute('aria-hidden', 'true');
+}
+
+/* A cancelled drag — Escape mid-drag, or dragging back out of the window —
+   fires neither dragleave nor drop. Depth counting alone therefore left a
+   fixed, full-page layer up forever, and it ate every click until a reload.
+   Every way a drag can end now clears it, a watchdog covers the ways that fire
+   no event at all, and the veil itself takes no pointer events, so even a stuck
+   veil cannot swallow a click. */
+function endDrag() {
+  dragDepth = 0;
+  if (dragWatchdog !== null) { clearTimeout(dragWatchdog); dragWatchdog = null; }
+  showVeil(false);
+}
+
+function armWatchdog() {
+  if (dragWatchdog !== null) clearTimeout(dragWatchdog);
+  // The drag loop ticks about every 350 ms while a drag is live, so two missed
+  // ticks mean the drag is over however it ended.
+  dragWatchdog = setTimeout(endDrag, 800);
 }
 
 window.addEventListener('dragenter', function (event) {
   event.preventDefault();
   dragDepth++;
   showVeil(true);
+  armWatchdog();
 });
 
-window.addEventListener('dragover', function (event) { event.preventDefault(); });
+window.addEventListener('dragover', function (event) {
+  event.preventDefault();
+  if (els.dropVeil.hidden) showVeil(true);
+  armWatchdog();
+});
 
 window.addEventListener('dragleave', function () {
   dragDepth = Math.max(0, dragDepth - 1);
-  if (dragDepth === 0) showVeil(false);
+  if (dragDepth === 0) endDrag();
 });
+
+document.addEventListener('dragend', endDrag);
+document.addEventListener('keydown', function (event) {
+  if (event.key === 'Escape' && !els.dropVeil.hidden) endDrag();
+});
+window.addEventListener('blur', endDrag);
+document.addEventListener('mousedown', function () { if (!els.dropVeil.hidden) endDrag(); });
+document.addEventListener('click', function () { if (!els.dropVeil.hidden) endDrag(); });
+els.dropVeil.addEventListener('click', endDrag);
 
 window.addEventListener('drop', function (event) {
   event.preventDefault();
-  dragDepth = 0;
-  showVeil(false);
+  endDrag();
   var files = event.dataTransfer && event.dataTransfer.files;
   if (!files || !files.length) {
     var text = event.dataTransfer && event.dataTransfer.getData('text');
@@ -1067,12 +1135,28 @@ window.addEventListener('drop', function (event) {
     return;
   }
   var file = files[0];
+  var name = firstLine(file.name, 60);
   var reader = new FileReader();
-  reader.onerror = function () { setStatus('Could not read ' + firstLine(file.name, 60) + '.', true); };
+  setBusy(true);
+  setStatus('Reading ' + name + '…', false);
+  reader.onerror = function () {
+    setBusy(false);
+    setStatus('Could not read ' + name + '.', true);
+  };
   reader.onload = function () {
+    setBusy(false);
     var raw = typeof reader.result === 'string' ? reader.result : '';
-    els.input.value = raw.length > LIMITS.input ? '' : raw;
-    loadText(raw, firstLine(file.name, 60));
+    // A megabyte of JSON in the textarea makes every keystroke cost seconds, so
+    // a big file is rendered without being pushed back into the box.
+    var extra = '';
+    if (raw.length > BUSY_CHARS) {
+      els.input.value = '';
+      extra = 'The file is ' + raw.length.toLocaleString() +
+        ' characters, so it was not copied into the box; the box stays free for editing.';
+    } else {
+      els.input.value = raw;
+    }
+    loadText(raw, name, extra);
   };
   reader.readAsText(file);
 });

@@ -126,6 +126,27 @@ button {
 
 button.ghost { background: transparent; color: var(--accent); }
 
+button[disabled] { opacity: 0.55; cursor: default; }
+
+/* Busy state: reading a multi-megabyte file blocks the thread, and silence for
+   several seconds reads as a hung page. */
+body.is-busy { cursor: progress; }
+.status.busy { color: var(--ink); }
+.status.busy::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: busy-pulse 1s ease-in-out infinite;
+}
+@keyframes busy-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .status.busy::before { animation: none; opacity: 1; }
+}
+
 button.link {
   background: none;
   border: none;
@@ -288,6 +309,9 @@ pre.value, p.value {
   border: 2px dashed var(--accent);
   color: var(--accent);
   font-size: 0.95rem;
+  /* Defensive: whatever else goes wrong with a drag, this layer can never eat
+     a click. The drop itself is handled on window, not on the veil. */
+  pointer-events: none;
 }
 .drop-veil[hidden] { display: none; }
 
