@@ -685,6 +685,7 @@ function showRun(result, note) {
   state.dialect = result.dialect;
   state.selected = 0;
   renderTimeline();
+  renderSummary();
   select(0, false);
   setStatus(note || (result.steps.length + ' steps from a ' + result.dialect + ' transcript.'), false);
 }
@@ -790,4 +791,93 @@ var resizeTimer = null;
 window.addEventListener('resize', function () {
   if (resizeTimer !== null) clearTimeout(resizeTimer);
   resizeTimer = setTimeout(function () { resizeTimer = null; clampSlots(); }, 120);
+});
+
+/* --------------------------------------------------------------- summary ---- */
+
+function summarise(steps) {
+  var tools = [];
+  var calls = 0, errors = 0, first = null, last = null;
+  for (var i = 0; i < steps.length; i++) {
+    var step = steps[i];
+    if (step.kind === 'tool-call') {
+      calls++;
+      if (step.toolName && tools.indexOf(step.toolName) === -1 && tools.length < 40) tools.push(step.toolName);
+    }
+    if (step.isError) errors++;
+    if (step.timestamp !== null) {
+      if (first === null || step.timestamp < first) first = step.timestamp;
+      if (last === null || step.timestamp > last) last = step.timestamp;
+    }
+  }
+  return {
+    steps: steps.length,
+    calls: calls,
+    errors: errors,
+    tools: tools,
+    // Elapsed is reported only when the log itself carries usable timestamps.
+    elapsed: (first !== null && last !== null && last > first) ? last - first : null
+  };
+}
+
+function renderSummary() {
+  clear(els.summary);
+  if (!state.steps.length) return;
+  var s = summarise(state.steps);
+  metric('Steps', String(s.steps));
+  metric('Tool calls', String(s.calls));
+  metric('Errors', String(s.errors));
+  metric('Distinct tools', String(s.tools.length));
+  if (s.tools.length) metric('Tools used', firstLine(s.tools.join(', '), 90));
+  if (s.elapsed !== null) metric('Elapsed', formatDuration(s.elapsed));
+  metric('Format', state.dialect);
+
+  function metric(label, value) {
+    var wrap = el('div', 'metric');
+    wrap.appendChild(el('span', 'metric-label', label));
+    wrap.appendChild(el('span', 'metric-value', value));
+    els.summary.appendChild(wrap);
+  }
+}
+
+/* ---------------------------------------------------------- file dropping ---- */
+
+var dragDepth = 0;
+
+function showVeil(show) {
+  els.dropVeil.hidden = !show;
+}
+
+window.addEventListener('dragenter', function (event) {
+  event.preventDefault();
+  dragDepth++;
+  showVeil(true);
+});
+
+window.addEventListener('dragover', function (event) { event.preventDefault(); });
+
+window.addEventListener('dragleave', function () {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) showVeil(false);
+});
+
+window.addEventListener('drop', function (event) {
+  event.preventDefault();
+  dragDepth = 0;
+  showVeil(false);
+  var files = event.dataTransfer && event.dataTransfer.files;
+  if (!files || !files.length) {
+    var text = event.dataTransfer && event.dataTransfer.getData('text');
+    if (text) { els.input.value = text; loadText(text, 'Dropped text'); }
+    return;
+  }
+  var file = files[0];
+  var reader = new FileReader();
+  reader.onerror = function () { setStatus('Could not read ' + firstLine(file.name, 60) + '.', true); };
+  reader.onload = function () {
+    var raw = typeof reader.result === 'string' ? reader.result : '';
+    els.input.value = raw.length > LIMITS.input ? '' : raw;
+    loadText(raw, firstLine(file.name, 60));
+  };
+  reader.readAsText(file);
 });
