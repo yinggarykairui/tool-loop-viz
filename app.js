@@ -1169,7 +1169,7 @@ function renderSummary() {
     // how many it is not showing, rather than ending mid-identifier.
     var names = s.tools.join(', ');
     if (s.distinct > s.tools.length) names += ', and ' + (s.distinct - s.tools.length) + ' more';
-    metric('Tools used', names, names);
+    metric('Tools used', names, names, 'metric-tools');
   }
   if (s.elapsed !== null) {
     var elapsed = formatDuration(s.elapsed);
@@ -1177,8 +1177,8 @@ function renderSummary() {
   }
   metric('Format', state.dialect);
 
-  function metric(label, value, title) {
-    var wrap = el('div', 'metric');
+  function metric(label, value, title, extraClass) {
+    var wrap = el('div', 'metric' + (extraClass ? ' ' + extraClass : ''));
     wrap.appendChild(el('span', 'metric-label', label));
     var node = el('span', 'metric-value', value);
     if (title) node.title = title;
@@ -1193,8 +1193,8 @@ function renderRunNotes(result) {
   clear(els.runNotes);
   var notes = [];
   if (state.isExample) {
-    notes.push('The example on screen is hand-written for this page. It is not a capture of a real run: ' +
-      'the job, the config revision, the pull request and the host in it do not exist.');
+    notes.push('The example on screen is hand-written for this page, not a capture of a real run: ' +
+      'the job, the config change and the host in it do not exist.');
   }
   if (result && result.naiveTime) {
     notes.push('Some timestamps in this transcript carry no time zone. They are read as UTC.');
