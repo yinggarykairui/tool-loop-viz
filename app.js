@@ -924,12 +924,29 @@ function revealInList(node) {
 
 function isNarrow() { return window.matchMedia('(max-width: 46rem)').matches; }
 
-/* On one column the detail pane sits below the whole list, so a tap changed
-   something the reader could not see. Bring it to them. */
-function revealDetail() {
-  var top = els.detail.getBoundingClientRect().top + window.pageYOffset - 12;
-  if (top < 0) top = 0;
-  window.scrollTo({ top: top, behavior: 'smooth' });
+/* On one column the detail pane sits under the list, so changing the selection
+   changes something the reader may not be able to see. The pair is brought
+   into view together — the list is bounded at this width, so aligning the top
+   of the two panes shows the row and the head of its detail at once. Scrolling
+   the detail alone to the top is what used to push the tapped row off the
+   screen with a thousand pixels of scroll as the only way back.
+
+   Nothing moves while both are already visible: an arrow key that is only
+   walking rows inside the list should not drag the page about. */
+function revealPair(current) {
+  if (!isNarrow()) return;
+  var vh = window.innerHeight;
+  var d = els.detail.getBoundingClientRect();
+  var detailShown = d.top >= 0 && d.top < vh - 40;
+  var rowShown = true;
+  if (current) {
+    var r = current.getBoundingClientRect();
+    rowShown = r.top >= 0 && r.bottom <= vh;
+  }
+  if (detailShown && rowShown) return;
+  var anchor = document.querySelector('.panes') || els.detail;
+  var top = anchor.getBoundingClientRect().top + window.pageYOffset - 8;
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
 }
 
 function select(index, moveFocus, reveal) {
@@ -957,7 +974,8 @@ function select(index, moveFocus, reveal) {
     if (moveFocus) current.focus({ preventScroll: true });
   }
   renderDetail();
-  if (reveal && isNarrow()) revealDetail();
+  // Keys move the selection too, so they get the same treatment as a tap.
+  if (reveal || moveFocus) revealPair(current);
 }
 
 function showRun(result, note) {

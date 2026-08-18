@@ -81,6 +81,11 @@ h1 {
 
 .tagline { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.875rem; }
 
+/* The paste box sits under the run, which on a phone is well below the fold.
+   One line above the fold says where it is, and goes there. */
+.signpost { margin: 0.25rem 0 0; font-size: 0.8rem; }
+.signpost a { color: var(--accent); text-underline-offset: 3px; }
+
 h2 {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -90,7 +95,15 @@ h2 {
   margin: 0 0 0.5rem;
 }
 
-main { padding-bottom: 4rem; }
+/* The run comes first at every width: the loop this page exists to show is on
+   the first screen, with the paste box under it and a line in the header
+   pointing at it. Source order is unchanged, so nothing moves for a screen
+   reader or for Tab. */
+main { display: flex; flex-direction: column; padding-bottom: 4rem; }
+.summary { order: 1; }
+.run-notes { order: 2; }
+.panes { order: 3; }
+.input-panel { order: 4; margin-top: 1.5rem; }
 
 .input-panel { margin-top: clamp(1rem, 3vw, 1.5rem); }
 
@@ -405,11 +418,14 @@ pre.value, p.value {
 
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* One column: the list is not a 312px scroll region competing with the page
-   for the same swipe, and the summary strip does not eat half the first
-   screen. Tapping a step scrolls the detail pane into view (in app.js). */
+/* One column. The list keeps its own bounded scroll here, because letting it
+   run to its full height put the detail pane three and a half screens down and
+   sent the row you tapped off the top of the window. It is bounded to a little
+   over a third of the screen, so the list, the row you are on and the top of
+   the detail are on the same screen and the page still has plenty of surface
+   left to swipe on. */
 @media (max-width: 46rem) {
-  .timeline { max-height: none; overflow: visible; }
+  .timeline { max-height: clamp(9rem, 34vh, 20rem); overflow-y: auto; }
   .summary {
     gap: 0.25rem 1rem;
     font-size: 0.8rem;
@@ -439,16 +455,7 @@ pre.value, p.value {
   }
   textarea { min-height: 3.5rem; }
   .hint { display: none; }
-  /* One column, and the run comes first: the loop the page exists to show
-     should be on the first screen, with the paste box under it. Source order
-     is unchanged, so nothing moves for a screen reader or for Tab. */
-  main { display: flex; flex-direction: column; }
-  .summary { order: 1; margin-top: 0.75rem; }
-  .run-notes { order: 2; }
-  .panes { order: 3; margin-top: 0.75rem; }
-  .input-panel { order: 4; margin-top: 1.5rem; }
-  /* Room below the last pane so a tapped step's detail can reach the top. */
-  main { padding-bottom: 60vh; }
+  .panes { margin-top: 0.75rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
