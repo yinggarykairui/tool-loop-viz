@@ -249,14 +249,15 @@ button.link {
    clipped without a way to open it. */
 .value-slot { position: relative; }
 .value-slot.clamped .value-body { max-height: 12rem; overflow: hidden; }
-.value-slot.clamped .value-body::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
+.value-fade {
+  display: none;
   height: 2.5rem;
+  margin-top: -2.5rem;
+  position: relative;
   background: linear-gradient(to bottom, transparent, var(--surface));
   pointer-events: none;
 }
+.value-slot.clamped .value-fade { display: block; }
 .value-body { position: relative; min-width: 0; }
 
 pre.value, p.value {

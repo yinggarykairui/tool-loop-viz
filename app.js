@@ -557,6 +557,7 @@ function appendValue(parent, value, emptyLabel) {
   var body = el('div', 'value-body');
   body.appendChild(el('pre', 'value', shown.text));
   slot.appendChild(body);
+  slot.appendChild(el('div', 'value-fade'));
   if (shown.truncated) {
     var note = 'Value clipped at ' + LIMITS.value.toLocaleString() + ' characters';
     if (shown.fullLength) note += ' of ' + shown.fullLength.toLocaleString();
@@ -653,6 +654,9 @@ function renderDetail() {
     build(wrap);
     els.detail.appendChild(wrap);
   }
+
+  // Measured last, when the slots are in the document at their real width.
+  clampSlots();
 }
 
 function select(index, moveFocus) {
@@ -730,4 +734,60 @@ els.timeline.addEventListener('keydown', function (event) {
 els.timeline.addEventListener('focus', function () {
   var current = els.timeline.children[state.selected];
   if (current) current.focus();
+});
+
+/* -------------------------------------------------------------- clamping ---- */
+
+/* The clamp bounds the idle height of a value slot and nothing else. It is
+   applied only after measuring, and only together with a control that removes
+   it, so no content can end up clipped with no way to reveal it. That failure
+   showed up at narrow widths in an earlier build, which is why the decision is
+   made from measured height rather than from a width breakpoint, and re-made
+   whenever the viewport changes. */
+var CLAMP_SLACK_PX = 24;
+
+function clampLimitPx() {
+  var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  return rem * 12;
+}
+
+function clampSlots() {
+  var slots = els.detail.querySelectorAll('.value-slot');
+  var limit = clampLimitPx();
+  for (var i = 0; i < slots.length; i++) {
+    var slot = slots[i];
+    var body = slot.querySelector('.value-body');
+    var toggle = slot.querySelector('.value-toggle');
+    if (slot.dataset.expanded === 'true') continue;   // user opened it; leave it open
+    slot.classList.remove('clamped');
+    var overflows = body.scrollHeight > limit + CLAMP_SLACK_PX;
+    if (overflows) {
+      if (!toggle) toggle = addToggle(slot);
+      toggle.hidden = false;
+      slot.classList.add('clamped');
+    } else if (toggle) {
+      toggle.hidden = true;
+    }
+  }
+}
+
+function addToggle(slot) {
+  var toggle = el('button', 'link value-toggle', 'Show the whole value');
+  toggle.type = 'button';
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.addEventListener('click', function () {
+    var open = slot.dataset.expanded === 'true';
+    slot.dataset.expanded = open ? 'false' : 'true';
+    slot.classList.toggle('clamped', open);
+    toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+    toggle.textContent = open ? 'Show the whole value' : 'Show less';
+  });
+  slot.appendChild(toggle);
+  return toggle;
+}
+
+var resizeTimer = null;
+window.addEventListener('resize', function () {
+  if (resizeTimer !== null) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () { resizeTimer = null; clampSlots(); }, 120);
 });
