@@ -101,14 +101,13 @@ h2 {
 
 /* The run comes first at every width: the loop this page exists to show is on
    the first screen, with the paste box under it and a line in the header
-   pointing at it. Source order is unchanged, so nothing moves for a screen
-   reader or for Tab. */
+   pointing at it. This used to be done with flex `order` over an unchanged
+   source order, on the reasoning that leaving the DOM alone left Tab alone.
+   It did — and that was the bug: Tab kept following the source, so from a cold
+   1280x800 load focus dived 680px to the page foot and jumped 714px back up
+   (WCAG 2.4.3, focus order). The panel now sits last in the markup, which is
+   where it is drawn, so the two orders are the same order. */
 main { display: flex; flex-direction: column; padding-bottom: 4rem; }
-.summary { order: 1; }
-.run-notes { order: 2; }
-.panes { order: 3; }
-.input-panel { order: 4; margin-top: 1.5rem; }
-
 .input-panel { margin-top: clamp(1rem, 3vw, 1.5rem); }
 
 .field-label {
@@ -234,6 +233,28 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 /* The tool list wraps and is never cut mid-identifier. */
 .summary .metric-tools { flex: 1 1 18rem; }
 .summary .metric-tools .metric-value { white-space: normal; overflow-wrap: anywhere; }
+.tools-disclosure { min-width: 0; }
+.tools-disclosure > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2.75rem;   /* a real tap target, and it costs no layout on a strip this tall */
+  margin: -0.75rem 0;
+}
+.tools-disclosure > summary::-webkit-details-marker { display: none; }
+/* A caret, drawn in text so it inherits the label's colour and needs no asset. */
+.tools-disclosure > summary::after {
+  content: '\25B8';
+  font-size: 0.75em;
+  color: var(--ink-faint);
+  transition: transform 120ms ease;
+  display: inline-block;
+}
+.tools-disclosure[open] > summary::after { transform: rotate(90deg); }
+.tools-disclosure > summary:hover { color: var(--ink); }
+.tools-disclosure > summary:hover::after { color: var(--ink); }
 
 .run-notes { margin-top: 0.5rem; }
 .run-notes[hidden] { display: none; }
@@ -453,10 +474,11 @@ pre.value, p.value {
   /* Wrapping, here as at every other width: an ellipsis in the middle of
      query_wareh… names no tool anyone can look up. */
   .summary .metric-tools .metric-value { display: block; }
-  /* The form should not be the whole first screen. The label repeats the
-     placeholder, so it is kept for screen readers and taken out of the flow,
-     and the hint names things a phone does not have: a file to drag, a key to
-     hold. */
+  /* Folded shut here, so the strip is a line rather than a screen. */
+  .tools-disclosure { display: block; }
+  .tools-disclosure > summary { margin: 0; min-height: 1.75rem; }
+  /* The label repeats the placeholder, so it is kept for screen readers and
+     taken out of the flow. */
   .field-label {
     position: absolute;
     width: 1px;
@@ -468,7 +490,13 @@ pre.value, p.value {
     white-space: nowrap;
   }
   textarea { min-height: 3.5rem; }
-  .hint { display: none; }
+  /* The hint is the only text on the page that names the drop target and the
+     Ctrl/Cmd + Enter shortcut. It used to be hidden here to keep the form off
+     the first screen — but the form is at the foot now, so hiding it bought
+     nothing and left two affordances documented nowhere on a phone. It reads
+     as its own line rather than trailing the buttons. */
+  .controls { flex-wrap: wrap; }
+  .hint { display: block; flex-basis: 100%; }
   .panes { margin-top: 0.75rem; }
 }
 

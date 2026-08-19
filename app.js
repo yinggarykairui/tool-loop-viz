@@ -1234,6 +1234,19 @@ window.addEventListener('resize', function () {
 // Names are listed up to this many; the count is never capped.
 var TOOL_LIST_MAX = 40;
 
+/* The one breakpoint this page has, read once. It also drives whether the tool
+   list opens folded, and a width change re-syncs it: crossing the breakpoint
+   with the list in the state the other width chose is how a phone ends up back
+   where this fix started. A reader who has toggled it by hand keeps their
+   choice until the width changes under them. */
+var NARROW = window.matchMedia('(max-width: 46rem)');
+function syncToolsDisclosure() {
+  var box = document.querySelector('.tools-disclosure');
+  if (box) box.open = !NARROW.matches;
+}
+if (NARROW.addEventListener) NARROW.addEventListener('change', syncToolsDisclosure);
+else if (NARROW.addListener) NARROW.addListener(syncToolsDisclosure);
+
 function summarise(steps) {
   var tools = [];
   var seen = Object.create(null);
@@ -1304,13 +1317,33 @@ function renderSummary() {
     // how many it is not showing, rather than ending mid-identifier.
     var names = s.tools.join(', ');
     if (s.distinct > s.tools.length) names += ', and ' + (s.distinct - s.tools.length) + ' more';
-    metric('Tools used', names, names, 'metric-tools');
+    toolsMetric(names, s.tools.length);
   }
   if (s.elapsed !== null) {
     var elapsed = formatDuration(s.elapsed);
     if (elapsed) metric('Elapsed', elapsed);
   }
   metric('Format', state.dialect);
+
+  /* Wrapping every tool name in full is right — an ellipsis through
+     query_wareh… names no tool anyone can look up — but on a 320px screen that
+     list ran the summary to 194px and pushed the timeline's first row off the
+     bottom, so a phone opened on a run it could not see. The names are folded
+     into a disclosure that a phone opens closed and a desktop opens open;
+     nothing is hidden from anyone, it just is not the first screen's problem. */
+  function toolsMetric(names, count) {
+    var wrap = el('div', 'metric metric-tools');
+    var box = el('details', 'tools-disclosure');
+    var head = el('summary', 'metric-label', 'Tools used');
+    head.title = count === 1 ? 'Show the tool name' : 'Show the ' + count + ' tool names';
+    box.appendChild(head);
+    var node = el('span', 'metric-value', names);
+    node.title = names;
+    box.appendChild(node);
+    box.open = !NARROW.matches;
+    wrap.appendChild(box);
+    els.summary.appendChild(wrap);
+  }
 
   function metric(label, value, title, extraClass) {
     var wrap = el('div', 'metric' + (extraClass ? ' ' + extraClass : ''));
