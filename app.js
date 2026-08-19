@@ -154,6 +154,7 @@ function makeStep(kind, fields) {
     timestamp: null,
     pairIndex: -1,
     looseResults: 0,
+    idIsAnswered: false,
     notes: []
   };
   for (var k in fields) if (Object.prototype.hasOwnProperty.call(fields, k)) step[k] = fields[k];
@@ -244,8 +245,9 @@ function flattenContent(content) {
       // point the text stops, rather than leaving the reader to believe the
       // result ended at block 200.
       if (content.length > LIMITS.items) {
-        texts.push('… ' + (content.length - LIMITS.items) + ' further content blocks in this result were not read (limit ' +
-          LIMITS.items + ').');
+        var over = content.length - LIMITS.items;
+        texts.push('… ' + over + (over === 1 ? ' further content block in this result was'
+          : ' further content blocks in this result were') + ' not read (limit ' + LIMITS.items + ').');
       }
       return texts.join('\n');
     }
@@ -381,15 +383,25 @@ function linkSteps(steps) {
       s.notes.push('This result carries no call id.');
     }
   }
-  // What an unmatched call is allowed to claim. Counted once, at link time,
-  // because "is there an unmatched result anywhere in this log" is a fact about
-  // the whole log and the detail pane renders one step.
+  /* What an unmatched call is allowed to claim. Both facts are about the whole
+     log, so both are settled once here rather than re-derived by a detail pane
+     that renders one step: how many results went unmatched, and which ids the
+     log's results actually carry. The second was the branch the first version
+     of this missed — two calls sharing an id and one result leaves the second
+     call unmatched with *nothing* loose, and it went back to asserting an
+     absence with the result sitting three rows below it. */
   var loose = 0;
+  var resultIds = Object.create(null);
   for (i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'tool-result' && steps[i].pairIndex < 0) loose++;
+    if (steps[i].kind !== 'tool-result') continue;
+    if (steps[i].pairIndex < 0) loose++;
+    if (steps[i].toolId) resultIds[steps[i].toolId] = true;
   }
   for (i = 0; i < steps.length; i++) {
-    if (steps[i].kind === 'tool-call' && steps[i].pairIndex < 0) steps[i].looseResults = loose;
+    if (steps[i].kind === 'tool-call' && steps[i].pairIndex < 0) {
+      steps[i].looseResults = loose;
+      steps[i].idIsAnswered = !!(steps[i].toolId && resultIds[steps[i].toolId]);
+    }
   }
   for (i = steps.length - 1; i >= 0; i--) {
     if (steps[i].kind === 'tool-call' || steps[i].kind === 'tool-result') break;
@@ -623,6 +635,14 @@ function parseGeneric(entries) {
 
 function unmatchedCallNote(step) {
   var loose = step.looseResults || 0;
+  // The log answered this id — just not this call. Two calls sharing an id and
+  // one result between them is the ordinary way here, and saying "no result
+  // appears in the log" about it is false twice over.
+  if (step.idIsAnswered) {
+    return 'A result carrying id ' + firstLine(step.toolId, 60) + ' is in this log, matched to ' +
+      'another call with the same id. Calls and results sharing an id are matched in the order ' +
+      'they appear, so this call has none left.';
+  }
   if (loose === 0) return 'No result for this call appears in the log.';
   if (!step.toolId) {
     return 'This call carries no id, so it cannot be matched. ' +

@@ -36,7 +36,11 @@
     --rule-strong: #7a828e;  /* 4.25:1 on surface */
     --accent: #9db9dc;
     --select-fill: #212630;  /* selection tint; the bar carries the 3:1 */
-    --hover: #26282d;
+    /* Below the selection fill, not above it: at #26282d the row under the
+       pointer measured 1.119:1 against the surface while the *chosen* row
+       measured 1.088:1, so the brightest row in the list was whichever one the
+       mouse happened to be resting on. 1.045:1 now — present, and outranked. */
+    --hover: #232529;
     --danger: #e2938a;
     --danger-soft: #33231f;
     --focus: #7fb0e8;
