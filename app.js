@@ -153,6 +153,7 @@ function makeStep(kind, fields) {
     isError: false,
     timestamp: null,
     pairIndex: -1,
+    looseResults: 0,
     notes: []
   };
   for (var k in fields) if (Object.prototype.hasOwnProperty.call(fields, k)) step[k] = fields[k];
@@ -330,9 +331,10 @@ function parseAnthropic(messages) {
     }
     if (content.length > LIMITS.items) {
       // The cap is real, so it is stated rather than dropping content silently.
+      var over = content.length - LIMITS.items;
       steps.push(makeStep('note', {
-        title: (content.length - LIMITS.items) + ' further content blocks in message ' +
-          (i + 1) + ' were not read (limit ' + LIMITS.items + ' per message).',
+        title: over + (over === 1 ? ' further content block in message ' : ' further content blocks in message ') +
+          (i + 1) + (over === 1 ? ' was' : ' were') + ' not read (limit ' + LIMITS.items + ' per message).',
         timestamp: when
       }));
     }
@@ -378,6 +380,16 @@ function linkSteps(steps) {
     } else {
       s.notes.push('This result carries no call id.');
     }
+  }
+  // What an unmatched call is allowed to claim. Counted once, at link time,
+  // because "is there an unmatched result anywhere in this log" is a fact about
+  // the whole log and the detail pane renders one step.
+  var loose = 0;
+  for (i = 0; i < steps.length; i++) {
+    if (steps[i].kind === 'tool-result' && steps[i].pairIndex < 0) loose++;
+  }
+  for (i = 0; i < steps.length; i++) {
+    if (steps[i].kind === 'tool-call' && steps[i].pairIndex < 0) steps[i].looseResults = loose;
   }
   for (i = steps.length - 1; i >= 0; i--) {
     if (steps[i].kind === 'tool-call' || steps[i].kind === 'tool-result') break;
@@ -436,9 +448,10 @@ function parseOpenAI(messages) {
         steps.push(openAICall(msg.tool_calls[c], when));
       }
       if (msg.tool_calls.length > LIMITS.items) {
+        var extra = msg.tool_calls.length - LIMITS.items;
         steps.push(makeStep('note', {
-          title: (msg.tool_calls.length - LIMITS.items) + ' further tool calls in message ' +
-            (i + 1) + ' were not read (limit ' + LIMITS.items + ' per message).',
+          title: extra + (extra === 1 ? ' further tool call in message ' : ' further tool calls in message ') +
+            (i + 1) + (extra === 1 ? ' was' : ' were') + ' not read (limit ' + LIMITS.items + ' per message).',
           timestamp: when
         }));
       }
@@ -606,6 +619,19 @@ function parseGeneric(entries) {
     }
   }
   return steps;
+}
+
+function unmatchedCallNote(step) {
+  var loose = step.looseResults || 0;
+  if (loose === 0) return 'No result for this call appears in the log.';
+  if (!step.toolId) {
+    return 'This call carries no id, so it cannot be matched. ' +
+      (loose === 1 ? 'One tool result in this log is unmatched too.'
+                   : loose + ' tool results in this log are unmatched too.');
+  }
+  return 'No result in this log carries id ' + firstLine(step.toolId, 60) + '. ' +
+    (loose === 1 ? 'One tool result in this log is unmatched.'
+                 : loose + ' tool results in this log are unmatched.');
 }
 
 function matchesAny(tag, hints) {
@@ -1015,7 +1041,16 @@ function renderDetail() {
       body.appendChild(link);
     });
   } else if (step.kind === 'tool-call') {
-    section('Result', function (body) { body.appendChild(el('p', 'note', 'No result for this call appears in the log.')); });
+    /* "No result for this call appears in the log" was printed for every
+       unmatched call, including the case where the result is right there in the
+       log and only the ids are missing or crossed. The README's promise is that
+       where a log lacks the ids to match by, the step says so rather than
+       guessing — the result side kept that promise and the call side guessed an
+       absence. Each of the three ways a call goes unmatched now says which one
+       it was. */
+    section('Result', function (body) {
+      body.appendChild(el('p', 'note', unmatchedCallNote(step)));
+    });
   }
 
   if (step.notes.length) {
