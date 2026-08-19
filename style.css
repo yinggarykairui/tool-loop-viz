@@ -90,6 +90,14 @@ h1 {
 .signpost { margin: 0.25rem 0 0; font-size: 0.8rem; }
 .signpost a { color: var(--accent); text-underline-offset: 3px; }
 
+.h2-aside {
+  margin-left: 0.5rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 h2 {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -197,7 +205,7 @@ button.link {
 }
 button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 
-.hint { color: var(--ink-faint); font-size: 0.8rem; }
+.hint { color: var(--ink-faint); font-size: 0.8rem; margin: 0.25rem 0 0; }
 
 .status { min-height: 1.5rem; margin: 0.5rem 0 0; font-size: 0.875rem; color: var(--ink-soft); }
 .status.error { color: var(--danger); }
@@ -257,9 +265,11 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 }
 .tools-disclosure > summary::-webkit-details-marker { display: none; }
 /* A caret, drawn in text so it inherits the label's colour and needs no asset. */
+.tools-count { color: var(--ink); font-variant-numeric: tabular-nums; }
+.tools-disclosure[open] .tools-count { display: none; }
 .tools-disclosure > summary::after {
   content: '\25B8';
-  font-size: 0.75em;
+  font-size: 0.95em;
   color: var(--ink-faint);
   transition: transform 120ms ease;
   display: inline-block;
@@ -307,7 +317,11 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
   transition: background-color 120ms ease;
 }
 .step:last-child { border-bottom: none; }
-.step:hover { background: var(--hover); }
+/* Never on the selected row: measured, the hover fill was *brighter* than the
+   selection fill in dark (1.119:1 against 1.088:1 on the surface), so a mouse
+   resting anywhere in the list made the row under the pointer read as the
+   chosen one and left the 4px bar carrying the selection alone. */
+.step:hover:not([aria-selected="true"]) { background: var(--hover); }
 /* The selection is carried by the bar, not by the fill. A fill saturated
    enough to clear 3:1 on its own was the loudest thing on the page in dark
    mode, and forcing one ink over it switched off the very kind colour the row
@@ -506,8 +520,7 @@ pre.value, p.value {
      the first screen — but the form is at the foot now, so hiding it bought
      nothing and left two affordances documented nowhere on a phone. It reads
      as its own line rather than trailing the buttons. */
-  .controls { flex-wrap: wrap; }
-  .hint { display: block; flex-basis: 100%; }
+  .hint { display: block; }
   .panes { margin-top: 0.75rem; }
 }
 

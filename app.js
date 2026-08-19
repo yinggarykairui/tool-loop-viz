@@ -1176,13 +1176,27 @@ function select(index, moveFocus, reveal) {
 function showRun(result, note, asked) {
   state.steps = result.steps;
   state.dialect = result.dialect;
-  state.selected = 0;
+  /* The bundled example opens on its first tool call rather than on step 1.
+     Step 1 of it is the user's prompt, which the timeline row already prints in
+     full — so the first screen said the same sentence twice, in two fonts, and
+     the thing this page exists to show (the call, its arguments, and the link
+     to the result it produced) was one arrow key away and invisible. A pasted
+     run still opens at its first step: that is the reader's own log and the top
+     of it is where they left off. */
+  var start = state.isExample ? firstToolCall(result.steps) : 0;
+  state.selected = start;
   renderTimeline();
   renderSummary();
   renderRunNotes(result);
-  select(0, false);
+  select(start, false);
   setStatus(note || (result.steps.length + ' steps from a ' + result.dialect + ' transcript.'), false);
   if (asked) revealRun();
+}
+
+function firstToolCall(steps) {
+  var limit = Math.min(steps.length, LIMITS.steps);
+  for (var i = 0; i < limit; i++) if (steps[i].kind === 'tool-call') return i;
+  return 0;
 }
 
 // The run, from its first metric down: the summary is where the count the
@@ -1467,6 +1481,11 @@ function renderSummary() {
     var wrap = el('div', 'metric metric-tools');
     var box = el('details', 'tools-disclosure');
     var head = el('summary', 'metric-label', 'Tools used');
+    // Folded, this metric was a label and an 8px caret in a strip where its six
+    // siblings all show a value: it read as broken rather than as closed. The
+    // count stands in for the names while they are away, and steps aside when
+    // they are back.
+    head.appendChild(el('span', 'tools-count', String(listed)));
     // A title that said "Show the 40 tool names" while showing 40 of 45, and
     // said "Show" while already open, was two small lies in one attribute.
     head.title = listed === 1 ? 'The tool name used in this run'
