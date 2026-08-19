@@ -240,8 +240,20 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  min-height: 2.75rem;   /* a real tap target, and it costs no layout on a strip this tall */
-  margin: -0.75rem 0;
+  position: relative;
+}
+/* The target is drawn, not laid out — the same trick the error count uses, so a
+   44px tap area costs the strip no height. It was the other way round at first:
+   44px on the desktop, where the list is already open and nothing needs
+   tapping, and 28px on the phone, the one width where it starts folded. */
+.tools-disclosure > summary::before {
+  content: '';
+  position: absolute;
+  left: -0.5rem;
+  right: -0.5rem;
+  top: 50%;
+  height: 2.75rem;
+  transform: translateY(-50%);
 }
 .tools-disclosure > summary::-webkit-details-marker { display: none; }
 /* A caret, drawn in text so it inherits the label's colour and needs no asset. */
@@ -476,7 +488,6 @@ pre.value, p.value {
   .summary .metric-tools .metric-value { display: block; }
   /* Folded shut here, so the strip is a line rather than a screen. */
   .tools-disclosure { display: block; }
-  .tools-disclosure > summary { margin: 0; min-height: 1.75rem; }
   /* The label repeats the placeholder, so it is kept for screen readers and
      taken out of the flow. */
   .field-label {

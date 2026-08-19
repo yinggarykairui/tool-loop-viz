@@ -1378,6 +1378,8 @@ function summarise(steps) {
 }
 
 function renderSummary() {
+  var previous = els.summary.querySelector('.tools-disclosure');
+  var openBefore = previous ? previous.open : null;
   clear(els.summary);
   if (!state.steps.length) return;
   var s = summarise(state.steps);
@@ -1426,16 +1428,25 @@ function renderSummary() {
      bottom, so a phone opened on a run it could not see. The names are folded
      into a disclosure that a phone opens closed and a desktop opens open;
      nothing is hidden from anyone, it just is not the first screen's problem. */
-  function toolsMetric(names, count) {
+  function toolsMetric(names, listed) {
     var wrap = el('div', 'metric metric-tools');
     var box = el('details', 'tools-disclosure');
     var head = el('summary', 'metric-label', 'Tools used');
-    head.title = count === 1 ? 'Show the tool name' : 'Show the ' + count + ' tool names';
+    // A title that said "Show the 40 tool names" while showing 40 of 45, and
+    // said "Show" while already open, was two small lies in one attribute.
+    head.title = listed === 1 ? 'The tool name used in this run'
+      : 'The ' + listed + ' tool names listed for this run';
     box.appendChild(head);
     var node = el('span', 'metric-value', names);
     node.title = names;
     box.appendChild(node);
-    box.open = !NARROW.matches;
+    // A reader who folded it on a desktop had it re-opened by the next Render.
+    // The state is read off the strip being replaced rather than kept in a
+    // variable: a `toggle` event fires asynchronously, so a listener on a node
+    // this function is about to discard can outlive it and write back a stale
+    // answer. Only a width change overrules the reader, because the default is
+    // a fact about the width.
+    box.open = openBefore === null ? !NARROW.matches : openBefore;
     wrap.appendChild(box);
     els.summary.appendChild(wrap);
   }
