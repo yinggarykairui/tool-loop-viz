@@ -61,6 +61,16 @@ function writeValue(value, depth, budget) {
       out = JSON.stringify(value);
     }
   }
+  else if (typeof value === 'number' && !isFinite(value)) {
+    /* JSON has no Infinity and no NaN, so this number is not what the log
+       said — it is what JSON.parse made of what the log said (1e999 becomes
+       Infinity, and the source text is gone by the time the value gets here).
+       A result *string* holding "1e999" is handed back verbatim by maybeJSON;
+       this is the nested case, which cannot be, so it is labelled instead of
+       printed as a fact the transcript never carried. */
+    budget.nonFinite = true;
+    out = String(value);
+  }
   else if (typeof value === 'number' || typeof value === 'boolean') { out = String(value); }
   else if (typeof value !== 'object') { out = String(value); }
   else if (depth >= LIMITS.depth) { budget.clipped = true; budget.deep = true; out = Array.isArray(value) ? '[ ... ]' : '{ ... }'; }
@@ -109,10 +119,11 @@ function presentValue(value) {
       fullLength: value.length
     };
   }
-  var budget = { left: LIMITS.value, clipped: false, chars: false, deep: false, wide: false };
+  var budget = { left: LIMITS.value, clipped: false, chars: false, deep: false, wide: false, nonFinite: false };
   var text = writeValue(value, 0, budget);
   return {
     text: displayText(text), kind: 'json', truncated: budget.clipped,
+    nonFinite: budget.nonFinite,
     why: { chars: budget.chars, deep: budget.deep, wide: budget.wide }
   };
 }
@@ -854,6 +865,12 @@ function appendValue(parent, value, emptyLabel) {
       'Only the first ' + LIMITS.value.toLocaleString() + ' characters of ' +
         shown.fullLength.toLocaleString() + ' were loaded; the rest is not on this page.' :
       clipReason(shown.why)));
+  }
+  if (shown.nonFinite) {
+    slot.appendChild(el('p', 'note',
+      'Infinity or NaN appears in this value. JSON cannot hold either, so the log did not ' +
+      'contain that word: a literal too large for a double — 1e999 and the like — becomes ' +
+      'Infinity when the text is parsed, and the digits that were written are not recoverable here.'));
   }
   parent.appendChild(slot);
 }
