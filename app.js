@@ -495,6 +495,14 @@ function openAIText(content) {
       else if (isPlainObject(part) && typeof part.text === 'string') parts.push(part.text);
       else parts.push(presentValue(part).text);
     }
+    // Every other cap on this page says so at the point it cut. This one was
+    // silent, which made the README's "whatever a cap leaves out, the page says
+    // so where it left it out" false for one dialect out of three.
+    if (i < content.length) {
+      parts.push('... ' + (content.length - i) + ' further content ' +
+        (content.length - i === 1 ? 'part was' : 'parts were') + ' not read: this page reads ' +
+        LIMITS.items + ' per message.');
+    }
     return parts.join('\n');
   }
   return presentValue(content).text;
@@ -531,7 +539,12 @@ function parseGeneric(entries) {
     if (when === null && body !== entry) when = readTimestamp(body);
     var tag = String(entry.type || entry.kind || entry.event || entry.role ||
       body.role || body.type || '').toLowerCase();
-    var name = pickString(body, NAME_KEYS) || pickString(entry, NAME_KEYS);
+    // One read, so the key and the value can never disagree: `pickKey` alone
+    // answers for a key `pickString` skipped ({name: 123, tool: "search"}).
+    var named = pickNamed(body, NAME_KEYS);
+    if (!named.value) named = pickNamed(entry, NAME_KEYS);
+    var nameKey = named.key;
+    var name = named.value;
     var input = pickValue(body, INPUT_KEYS);
     if (input === undefined) input = pickValue(entry, INPUT_KEYS);
     var output = pickValue(body, OUTPUT_KEYS);
@@ -551,8 +564,17 @@ function parseGeneric(entries) {
        a right one that labels three. */
     var speaks = roleKind(String(entry.role || body.role || '').toLowerCase()) !== 'note';
     var resultKey = !speaks && outputKey && matchesAny(outputKey, RESULT_HINTS);
+    /* The same invariant, on the call side. `name` on a message is a documented
+       OpenAI field naming the *speaker*, so `{role:"user", name:"human",
+       input:…}` was being listed as a tool call named `human` — and counted in
+       TOOL CALLS, DISTINCT TOOLS and TOOLS USED, three printed numbers made
+       false by one unguarded disjunct. A name read out of a tool-ish key
+       (`tool`, `function`, `action`, …) still names a tool whoever is
+       speaking; only the bare `name` key defers to the role. */
+    var speakerName = speaks && nameKey === 'name';
 
-    if (matchesAny(tag, CALL_HINTS) || (input !== undefined && output === undefined && name)) {
+    if (matchesAny(tag, CALL_HINTS) ||
+        (input !== undefined && output === undefined && name && !speakerName)) {
       steps.push(makeStep('tool-call', { toolName: name || '(unnamed tool)', toolId: id, input: input, timestamp: when }));
     } else if (matchesAny(tag, RESULT_HINTS) || resultKey ||
                (!speaks && output !== undefined && name && input === undefined)) {
@@ -578,7 +600,7 @@ function parseGeneric(entries) {
       }));
       // One flat log line often carries both what was said and the call it
       // made. Both are steps, so both are listed.
-      if (name && input !== undefined) {
+      if (name && input !== undefined && !speakerName) {
         steps.push(makeStep('tool-call', { toolName: name, toolId: id, input: input, timestamp: when }));
       }
     }
@@ -591,21 +613,22 @@ function matchesAny(tag, hints) {
   return false;
 }
 
-function pickString(obj, keys) {
-  for (var i = 0; i < keys.length; i++) {
-    var v = obj[keys[i]];
-    if (typeof v === 'string' && v) return v;
-    if (isPlainObject(v) && typeof v.name === 'string') return v.name;
-  }
-  return '';
-}
-
 function pickValue(obj, keys) {
   for (var i = 0; i < keys.length; i++) if (obj[keys[i]] !== undefined) return obj[keys[i]];
   return undefined;
 }
 
 // Which of those keys carried the value: the name is evidence in its own right.
+// The name a step carries and the key it came from, read together.
+function pickNamed(obj, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var v = obj[keys[i]];
+    if (typeof v === 'string' && v) return { key: keys[i], value: v };
+    if (isPlainObject(v) && typeof v.name === 'string' && v.name) return { key: keys[i], value: v.name };
+  }
+  return { key: '', value: '' };
+}
+
 function pickKey(obj, keys) {
   for (var i = 0; i < keys.length; i++) if (obj[keys[i]] !== undefined) return keys[i];
   return '';
@@ -689,15 +712,31 @@ function dialectOrder(messages) {
   return names;
 }
 
-// How much a parse actually recovered: text and tool steps, nothing else.
-function contentScore(steps) {
-  var score = 0;
+/* How much a parse actually recovered: text and tool steps, nothing else.
+
+   The text half is capped at one point per *source message*, and that cap is
+   the whole point. The dialects split a message differently — the Anthropic
+   parse emits a step per content block, the OpenAI parse joins a message's
+   parts into one step — so paying per step paid Anthropic once per fragment
+   and OpenAI once per message, and a canonical OpenAI log lost its own dialect
+   the moment its first message carried **five** text parts: 8 steps of prose
+   outscored 4 steps carrying a real tool call, and the page then printed
+   "Tool calls: none" over a log whose second message is a `tool_calls` array.
+   Measured before this cap: 1-4 parts OpenAI, 5+ Anthropic. It was reported as
+   an exotic 300-part case above the 200-per-message cap; the cap was neither
+   the cause nor a bound — a parse could also win *because* a cap fired inside
+   its rival. Splitting is a presentation choice, so it cannot be allowed to
+   vote. Tool steps stay uncapped and worth double: they are the structure this
+   page exists to read, and the `speakerName`/`speaks` guards are what keep a
+   mislabelled step from earning those two points. */
+function contentScore(steps, messageCount) {
+  var tools = 0, texts = 0;
   for (var i = 0; i < steps.length; i++) {
     var s = steps[i];
-    if (s.kind === 'tool-call' || s.kind === 'tool-result') score += 2;
-    else if (typeof s.text === 'string' && s.text.trim() !== '') score += 1;
+    if (s.kind === 'tool-call' || s.kind === 'tool-result') tools += 2;
+    else if (typeof s.text === 'string' && s.text.trim() !== '') texts++;
   }
-  return score;
+  return tools + Math.min(texts, messageCount);
 }
 
 /* ---------------------------------------------------------------- entry ---- */
@@ -734,7 +773,7 @@ function parseTranscript(raw) {
   for (var i = 0; i < order.length; i++) {
     PARSE_FLAGS.naiveTime = false;
     var steps = linkSteps(DIALECTS[order[i]].parse(messages));
-    var score = contentScore(steps);
+    var score = contentScore(steps, messages.length);
     if (best === null || score > best.score) {
       best = { steps: steps, dialect: DIALECTS[order[i]].label, score: score, naiveTime: PARSE_FLAGS.naiveTime };
     }
