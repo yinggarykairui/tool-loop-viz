@@ -819,6 +819,10 @@ function describeType(v) {
 
 var state = { steps: [], selected: 0, rendered: 0, dialect: '', isExample: false, statusLine: '' };
 var nextIsExample = false;
+// Set when a *person* asked for the load — Render, Ctrl/Cmd + Enter, a drop, or
+// the Load example button. The example this page opens on did not ask, and must
+// leave the scroll position where it found it.
+var nextIsAsked = false;
 
 var els = {
   input: document.getElementById('input'),
@@ -922,8 +926,9 @@ function renderTimeline() {
     els.timeline.appendChild(buildOption(state.steps[i]));
   }
   if (state.steps.length > limit) {
-    els.timelineNote.textContent = 'Showing the first ' + limit + ' steps; ' +
-      (state.steps.length - limit) + ' further steps were parsed but are not listed.';
+    var rest = state.steps.length - limit;
+    els.timelineNote.textContent = 'Showing the first ' + limit + ' steps; ' + rest +
+      (rest === 1 ? ' further step was' : ' further steps were') + ' parsed but not listed.';
     els.timelineNote.hidden = false;
   } else {
     els.timelineNote.textContent = '';
@@ -1042,7 +1047,16 @@ function revealInList(node) {
   else if (r.bottom > lr.bottom) list.scrollTop += r.bottom - lr.bottom;
 }
 
-function isNarrow() { return window.matchMedia('(max-width: 46rem)').matches; }
+function isNarrow() { return NARROW.matches; }
+
+/* The reduced-motion block in the stylesheet plainly means to kill this
+   animation, and could not: `html { scroll-behavior: auto }` governs
+   CSS-initiated scrolling only, and every scroll on this page is asked for in
+   script with `behavior` hard-coded to 'smooth'. Measured before this: ten
+   intermediate positions over ~225ms with `reduce` on, identical to the
+   animation with it off. */
+var REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)');
+function scrollBehavior() { return REDUCE.matches ? 'auto' : 'smooth'; }
 
 /* On one column the detail pane sits under the list, so changing the selection
    changes something the reader may not be able to see. The pair is brought
@@ -1079,7 +1093,7 @@ function revealPair(current) {
   if (Math.abs(top - revealTarget) < 2 && now - revealAsked < 600) return;
   revealTarget = top;
   revealAsked = now;
-  window.scrollTo({ top: top, behavior: 'smooth' });
+  window.scrollTo({ top: top, behavior: scrollBehavior() });
 }
 
 function select(index, moveFocus, reveal) {
@@ -1114,7 +1128,17 @@ function select(index, moveFocus, reveal) {
   if (reveal || moveFocus) revealPair(current);
 }
 
-function showRun(result, note) {
+/* `asked` is true when a reader pressed Render, hit Ctrl/Cmd + Enter or dropped
+   a file — as against the example this page opens on, which must leave the
+   scroll position alone (it is the top of the page, and moving it is the bug
+   this build fixed in cycle 2 of the day shift).
+
+   The paste box now sits at the foot, which is where it belongs and where Tab
+   expects it, but at 320x568 that put it a full screen below the run: pressing
+   Render left the summary 226px above the fold and the first row 126px above
+   it, so the answer to what the reader had just asked for was off-screen with
+   nothing saying to scroll back up. */
+function showRun(result, note, asked) {
   state.steps = result.steps;
   state.dialect = result.dialect;
   state.selected = 0;
@@ -1123,18 +1147,33 @@ function showRun(result, note) {
   renderRunNotes(result);
   select(0, false);
   setStatus(note || (result.steps.length + ' steps from a ' + result.dialect + ' transcript.'), false);
+  if (asked) revealRun();
+}
+
+// The run, from its first metric down: the summary is where the count the
+// reader just asked about is printed.
+function revealRun() {
+  var anchor = els.summary && els.summary.firstChild ? els.summary :
+    (document.querySelector('.panes') || els.detail);
+  var top = Math.max(0, anchor.getBoundingClientRect().top + window.pageYOffset - 8);
+  if (Math.abs(top - window.pageYOffset) < 8) return;
+  revealTarget = top;
+  revealAsked = Date.now();
+  window.scrollTo({ top: top, behavior: scrollBehavior() });
 }
 
 // A failed parse must never wipe a run that is already on screen.
 function runLoad(raw, label, extra) {
   var wasExample = nextIsExample;
+  var asked = nextIsAsked || !wasExample;
   nextIsExample = false;
+  nextIsAsked = false;
   try {
     var result = parseTranscript(raw);
     state.isExample = wasExample;
     var count = result.steps.length;
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
-      ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''));
+      ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
   } catch (err) {
     var message = err && err.message ? err.message : String(err);
     setStatus(message + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
@@ -1684,6 +1723,8 @@ function loadExample(fillBox) {
   var text = JSON.stringify(EXAMPLE_TRANSCRIPT, null, 2);
   if (fillBox) els.input.value = text;
   nextIsExample = true;
+  // `fillBox` is only ever true for the button, which is to say for a person.
+  nextIsAsked = fillBox === true;
   loadText(text, 'Bundled example');
 }
 
