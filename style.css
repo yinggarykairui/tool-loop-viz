@@ -95,11 +95,13 @@ h1 {
    Hiding it above the breakpoint was tried and reverted: the premise was that
    the box is on the first screen at those widths, and it is not. At a viewport
    640px tall the TRANSCRIPT JSON label sits 654-733px down at every width from
-   737 to 1920; at 700 tall it is still below the fold at 737, 800 and 900; and
-   the Render button is below the fold at every width until the viewport is
-   about 1010px tall. A maximised window on a 1366x768 laptop has roughly 657px
-   of viewport. Whether the box is on the first screen is a question about
-   height, and a width query cannot answer it. Shown everywhere. */
+   737 to 1920 — measured with this line hidden, which is the case being tested;
+   on the shipped page, with the line shown, the same label sits 677-756px down;
+   at 700 tall it is still below the fold at 737, 800 and 900; and the Render
+   button is below the fold at every width until the viewport is about 1010px
+   tall. A maximised window on a 1366x768 laptop has roughly 657px of viewport.
+   Whether the box is on the first screen is a question about height, and a
+   width query cannot answer it. Shown everywhere. */
 .signpost { margin: 0.25rem 0 0; font-size: 0.8rem; }
 .signpost a { color: var(--accent); text-underline-offset: 3px; }
 
