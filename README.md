@@ -33,9 +33,9 @@ control characters a JSON transcript cannot — is refused by name rather than
 tipped into the paste box as bytes, text that is not a transcript still reaches
 the box and fails there, and whatever fails to parse says which file or paste it
 failed on. One over 400,000 characters is
-rendered without being left in the paste box — every keystroke in a box that
-long lags, and lags worse the longer it gets — and the page says so when it
-clears it. A paste that fails to parse is never cleared.
+rendered without being left in the paste box — typing in a box that long slows
+every keystroke, and slows further the longer the text gets — and the page says
+so when it clears it. A paste that fails to parse is never cleared.
 
 ## How to run
 

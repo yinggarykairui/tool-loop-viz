@@ -1255,8 +1255,8 @@ function runLoad(raw, label, extra, freeBox) {
     if (freeBox && raw.length > SLOW_BOX_CHARS && els.input.value === raw) {
       els.input.value = '';
       extra = (extra ? extra + ' ' : '') + 'The ' + raw.length.toLocaleString() +
-        ' characters were cleared from the box: every keystroke in a box that long lags, ' +
-        'and lags worse the longer it gets. The run on screen is unaffected.';
+        ' characters were cleared from the box: typing in a box that long slows every ' +
+        'keystroke, and slows further the longer the text gets. The run on screen is unaffected.';
     }
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
       ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
@@ -1285,10 +1285,24 @@ var BUSY_CHARS = 100000;
    its whole value out again on every keystroke, and the cost is linear in the
    length. Measured on this build, median synchronous cost of one keystroke:
    0.8 ms empty, 5.8 ms at 100,000, 13.9 ms at 300,000, 15.8 ms at 375,000,
-   17.6 ms at 400,000, 20.9 ms at 450,000, 83 ms at 2,000,000. 400,000 is where
-   the keystroke stops fitting in a 60 Hz frame and starts missing more of them
-   the longer the box gets; on a CPU throttled 4x, the same keystroke there
-   costs 90 ms. Below it the text is worth more in the box than the frame is. */
+   17.6 ms at 400,000, 20.9 ms at 450,000, 83 ms at 2,000,000; on a CPU
+   throttled 4x, the same keystroke at 400,000 costs 90 ms.
+
+   Re-measured for the claim the status text makes, this time with real key
+   presses and the paint two frames later, over two runs of 23 keystrokes per
+   size. Median keystroke-to-paint: 4.0-8.5 ms at 100,000, 6.8-8.2 ms at
+   300,000, 7.4-9.4 ms at 400,000, 9.4-10.9 ms at 500,000, 14.7-17.2 ms at
+   800,000, 18.7-21.0 ms at 1,000,000, 37-39 ms at 2,000,000. Share of
+   keystrokes missing a 60 Hz frame: 0-4% at 400,000, 0% at 500,000, 4-78% at
+   800,000, 100% from 1,000,000 up.
+
+   So the constant stays at 400,000 and the sentence changed instead. Every
+   keystroke missing a frame is true from 1,000,000, not here; what is true at
+   400,000 is that a keystroke costs about twice what it costs in an empty box
+   and the cost keeps climbing with the length. Raising the constant to
+   1,000,000 to fit the old sentence would leave a 600,000-character box in
+   place to buy a phrase, which is the wrong trade. Below 400,000 the text is
+   worth more in the box than the milliseconds are. */
 var SLOW_BOX_CHARS = 400000;
 var busyNow = false;
 
@@ -1735,8 +1749,8 @@ window.addEventListener('drop', function (event) {
         (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
       return;
     }
-    // Past the size at which the box lags on every keystroke, a file is
-    // rendered without being pushed back into the box at all.
+    // Past the size at which the box slows every keystroke, a file is rendered
+    // without being pushed back into the box at all.
     var extra = '';
     if (raw.length > SLOW_BOX_CHARS) {
       els.input.value = '';
