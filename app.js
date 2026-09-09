@@ -1500,14 +1500,20 @@ function renderSummary() {
     } else {
       metric('Errors', String(s.errors));
     }
-    metric('Distinct tools', String(s.distinct));
+    /* The tool-name disclosure below carries the distinct count whenever there
+       is a list to show, so printing it twice under two labels — TOOLS USED 40
+       beside DISTINCT TOOLS 45 — was two numbers for one run, reconciled only
+       by opening the disclosure. What is left is the case with no list: calls
+       whose names the log never carried, where the count is still a fact worth
+       printing and there is nowhere else to print it. */
+    if (!s.tools.length) metric('Distinct tools', String(s.distinct));
   }
   if (s.tools.length) {
     // Every name that is listed is listed in full; a list too long to show says
     // how many it is not showing, rather than ending mid-identifier.
     var names = s.tools.join(', ');
     if (s.distinct > s.tools.length) names += ', and ' + (s.distinct - s.tools.length) + ' more';
-    toolsMetric(names, s.tools.length);
+    toolsMetric(names, s.tools.length, s.distinct);
   }
   if (s.elapsed !== null) {
     var elapsed = formatDuration(s.elapsed);
@@ -1521,19 +1527,24 @@ function renderSummary() {
      bottom, so a phone opened on a run it could not see. The names are folded
      into a disclosure that a phone opens closed and a desktop opens open;
      nothing is hidden from anyone, it just is not the first screen's problem. */
-  function toolsMetric(names, listed) {
+  function toolsMetric(names, listed, distinct) {
     var wrap = el('div', 'metric metric-tools');
     var box = el('details', 'tools-disclosure');
     var head = el('summary', 'metric-label', 'Tools used');
-    // Folded, this metric was a label and an 8px caret in a strip where its six
-    // siblings all show a value: it read as broken rather than as closed. The
-    // count stands in for the names while they are away, and steps aside when
-    // they are back.
-    head.appendChild(el('span', 'tools-count', String(listed)));
+    /* The count is a fact about the run — how many tools it used — and the list
+       is a fact about this page — how many names it prints. So the count is the
+       distinct total, not the listed one, and it stays beside the label whether
+       the disclosure is open or shut: with the separate DISTINCT TOOLS metric
+       gone, hiding it on open would leave a desktop, which opens the disclosure
+       by default, with no tool count anywhere on the strip. */
+    head.appendChild(el('span', 'tools-count', String(distinct)));
     // A title that said "Show the 40 tool names" while showing 40 of 45, and
-    // said "Show" while already open, was two small lies in one attribute.
-    head.title = listed === 1 ? 'The tool name used in this run'
-      : 'The ' + listed + ' tool names listed for this run';
+    // said "Show" while already open, was two small lies in one attribute. It
+    // now has both numbers to keep straight.
+    head.title = distinct === listed ?
+      (listed === 1 ? 'The tool name used in this run'
+        : 'The ' + listed + ' tool names used in this run') :
+      distinct + ' tools were used in this run; the ' + listed + ' listed here are the first ' + listed + '.';
     box.appendChild(head);
     var node = el('span', 'metric-value', names);
     node.title = names;

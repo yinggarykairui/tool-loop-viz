@@ -271,9 +271,9 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
   transform: translateY(-50%);
 }
 .tools-disclosure > summary::-webkit-details-marker { display: none; }
-/* A caret, drawn in text so it inherits the label's colour and needs no asset. */
+/* Shown open as well as shut: it is now the only place the tool count lives. */
 .tools-count { color: var(--ink); font-variant-numeric: tabular-nums; }
-.tools-disclosure[open] .tools-count { display: none; }
+/* A caret, drawn in text so it inherits the label's colour and needs no asset. */
 .tools-disclosure > summary::after {
   content: '\25B8';
   font-size: 0.95em;
