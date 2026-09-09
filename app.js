@@ -1665,14 +1665,20 @@ els.dropVeil.addEventListener('click', endDrag);
    back as a page of replacement characters and NULs — which is what used to be
    written into the paste box, for the reader to select and delete by hand. A
    NUL cannot occur in valid JSON at all (it has to be escaped inside a string),
-   and a stray replacement character is ordinary mojibake, so one NUL is
-   decisive and replacement characters are judged by proportion. */
+   so one NUL in the opening bytes is decisive.
+
+   Replacement characters were tried as a second signal, at more than one in a
+   hundred, and are gone: a transcript may carry them honestly. A `tool_result`
+   that quotes a mis-encoded vendor feed holds them by the dozen and parses
+   cleanly, and a cp1252-encoded `.json` decodes lossily to the same characters
+   and also parses. Both were refused by name. The NUL test alone still refuses
+   PNG, JPEG, gzip, ZIP, tar, sqlite and BOM-less UTF-16, which is every real
+   binary put to it; a UTF-16 file that carries its BOM is decoded correctly by
+   `readAsText` and is text, so it loads. */
 var BINARY_SAMPLE = 4096;
 function looksBinary(text) {
   var sample = text.length > BINARY_SAMPLE ? text.slice(0, BINARY_SAMPLE) : text;
-  if (sample.indexOf('\u0000') !== -1) return true;
-  var bad = sample.match(/\uFFFD/g);
-  return !!bad && bad.length > sample.length / 100;
+  return sample.indexOf('\u0000') !== -1;
 }
 
 window.addEventListener('drop', function (event) {
@@ -1699,7 +1705,7 @@ window.addEventListener('drop', function (event) {
     // Refused before the box or the parser sees it: the reader dropped a file,
     // so the answer names the file rather than a byte offset in its decoding.
     if (looksBinary(raw)) {
-      setStatus(name + ' is not a text file: it holds bytes that are not text, so nothing was loaded. ' +
+      setStatus(name + ' has a zero byte in it, so it is not text and nothing was loaded. ' +
         'Drop a .json transcript.' + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
       return;
     }
