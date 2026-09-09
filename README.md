@@ -28,9 +28,11 @@ walk before you paste anything. That example is hand-written, not a capture of a
 real run.
 
 Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
-loads the same way a paste does; a file that is not text is refused by name
-rather than tipped into the paste box as bytes, and a transcript that fails to
-parse says which file or paste it failed on. One over 400,000 characters is
+loads the same way a paste does; a file that looks binary — one holding the raw
+control characters a JSON transcript cannot — is refused by name rather than
+tipped into the paste box as bytes, text that is not a transcript still reaches
+the box and fails there, and whatever fails to parse says which file or paste it
+failed on. One over 400,000 characters is
 rendered without being left in the paste box — every keystroke in a box that
 long lags, and lags worse the longer it gets — and the page says so when it
 clears it. A paste that fails to parse is never cleared.

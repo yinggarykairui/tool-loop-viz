@@ -1665,22 +1665,45 @@ els.dropVeil.addEventListener('click', endDrag);
 
 /* `FileReader.readAsText` decodes whatever it is given as UTF-8, so a PNG comes
    back as a page of replacement characters and NULs — which is what used to be
-   written into the paste box, for the reader to select and delete by hand. A
-   NUL cannot occur in valid JSON at all (it has to be escaped inside a string),
-   so one NUL in the opening bytes is decisive.
+   written into the paste box, for the reader to select and delete by hand.
+
+   The signal is a raw C0 control character other than tab, newline and
+   carriage return. JSON requires every character below U+0020 to be escaped
+   inside a string, and outside a string only those three and the space are
+   legal whitespace, so a file that could parse as a transcript cannot hold
+   one — while a binary format holds them by the hundred. An escaped `\u001b`
+   in a value is text and passes, because the file carries the six characters
+   and not the byte.
+
+   A NUL alone was the earlier test and was not enough. 65 of the 546 PDFs on
+   the machine this was measured on, 12%, carry no NUL in their first 4096
+   characters: a real one dropped 10,945 characters into the box and answered
+   with a byte offset instead of the file's name. So did a 5,000-byte stream of
+   the bytes 1 to 254. Both carry C0 controls in the first few hundred.
+
+   The whole decoded text is scanned rather than a window, which is what closes
+   the other half of that hole — a file whose first control character sat at
+   6,039 used to pass. The scan is cheap: worst case, text with no control
+   character in it at all, 0.1 ms at 100,000 characters, 0.8 ms at 1,000,000
+   and 9.4 ms at 12,000,000, which is the input cap; a binary file matches in
+   its opening bytes and returns immediately. Against a parse of the same text
+   that costs seconds, the whole-text scan is free.
 
    Replacement characters were tried as a second signal, at more than one in a
    hundred, and are gone: a transcript may carry them honestly. A `tool_result`
    that quotes a mis-encoded vendor feed holds them by the dozen and parses
    cleanly, and a cp1252-encoded `.json` decodes lossily to the same characters
-   and also parses. Both were refused by name. The NUL test alone still refuses
-   PNG, JPEG, gzip, ZIP, tar, sqlite and BOM-less UTF-16, which is every real
-   binary put to it; a UTF-16 file that carries its BOM is decoded correctly by
-   `readAsText` and is text, so it loads. */
-var BINARY_SAMPLE = 4096;
+   and also parses. Both were refused by name. A UTF-16 file that carries its
+   BOM is decoded correctly by `readAsText` and is text, so it loads; one
+   without a BOM decodes to alternating NULs and is refused.
+
+   It stays a heuristic. An ASCII-only PDF and an HTML file carry no control
+   character and still reach the box, where they fail to parse under their own
+   name. Refusing them would mean sniffing formats, and a wrong refusal costs
+   more than a labelled parse error. */
+var BINARY_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
 function looksBinary(text) {
-  var sample = text.length > BINARY_SAMPLE ? text.slice(0, BINARY_SAMPLE) : text;
-  return sample.indexOf('\u0000') !== -1;
+  return BINARY_CONTROL.test(text);
 }
 
 window.addEventListener('drop', function (event) {
