@@ -1436,12 +1436,14 @@ window.addEventListener('resize', function () {
 // Names are listed up to this many; the count is never capped.
 var TOOL_LIST_MAX = 40;
 
-/* The one breakpoint this page has, read once. It also drives whether the tool
-   list opens folded, and a width change re-syncs it: crossing the breakpoint
-   with the list in the state the other width chose is how a phone ends up back
-   where this fix started. A reader who has toggled it by hand keeps their
-   choice until the width changes under them. */
-var NARROW = window.matchMedia('(max-width: 46rem)');
+/* The one breakpoint this page has, read once, and the same value the media
+   query at the foot of style.css uses — see the note above `.panes` for why it
+   sits at 43.99rem. It also drives whether the tool list opens folded, and a
+   width change re-syncs it: crossing the breakpoint with the list in the state
+   the other width chose is how a phone ends up back where this fix started. A
+   reader who has toggled it by hand keeps their choice until the width changes
+   under them. */
+var NARROW = window.matchMedia('(max-width: 43.99rem)');
 function syncToolsDisclosure() {
   var box = document.querySelector('.tools-disclosure');
   if (box) box.open = !NARROW.matches;

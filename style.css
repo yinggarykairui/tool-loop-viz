@@ -299,13 +299,22 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
    container-driven (`auto-fit` over `minmax(min(100%, 20rem), 1fr)`) while the
    rules at the foot of this file and the script's `NARROW` were viewport-driven
    at 46rem. The two agreed nowhere in particular: for a viewport W the padding
-   and gap are both 3vw, so two tracks appear once 640 <= 0.91W — from 704px up.
-   Between there and 736px the grid had already split while the narrow rules
+   and gap are both 3vw, so two tracks appear once 640 <= 0.91W — from 703.3px
+   up. Between there and 736px the grid had already split while the narrow rules
    still ran, so the timeline gave up 168px of height beside a column that was
    already there, and `revealPair` — whose premise is that at this width the
    detail sits *under* the list — scrolled the window for a pane sitting next to
    the row. The script cannot read a container query, so the layout follows the
-   script's breakpoint rather than the other way round. */
+   script's breakpoint rather than the other way round.
+
+   They agree at 43.99rem, not at 46rem, because the band belongs to the wide
+   side: 703.3px is where two 20rem columns fit, and unifying upward gave the
+   band the phone's rules instead. Measured at 720x800, as document height /
+   timeline rows visible / detail card top — base 901 / 3 / 305; unified at
+   46rem 1219 / 4 / 624; unified here 1144 / 5 / 381. The band reads better as
+   a small tablet than as a large phone, and the extra height over base is the
+   timeline's wide max-height, which is what buys the two extra rows. 43.99rem
+   puts the flip between 703 and 704. */
 .panes {
   display: grid;
   gap: clamp(1rem, 3vw, 2rem);
@@ -510,7 +519,7 @@ pre.value, p.value {
    over a third of the screen, so the list, the row you are on and the top of
    the detail are on the same screen and the page still has plenty of surface
    left to swipe on. */
-@media (max-width: 46rem) {
+@media (max-width: 43.99rem) {
   .timeline { max-height: clamp(9rem, 34vh, 20rem); overflow-y: auto; }
   .summary {
     gap: 0.25rem 1rem;
