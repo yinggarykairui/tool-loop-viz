@@ -1519,10 +1519,12 @@ function renderSummary() {
     /* The tool-name disclosure below carries the distinct count whenever there
        is a list to show, so printing it twice under two labels — TOOLS USED 40
        beside DISTINCT TOOLS 45 — was two numbers for one run, reconciled only
-       by opening the disclosure. What is left is the case with no list: calls
-       whose names the log never carried, where the count is still a fact worth
-       printing and there is nowhere else to print it. */
-    if (!s.tools.length) metric('Distinct tools', String(s.distinct));
+       by opening the disclosure. There is no third case: a name is listed the
+       moment it is counted, so an empty list means a distinct count of zero,
+       and the only DISTINCT TOOLS this branch could ever print was `0` beside
+       a non-zero TOOL CALLS. A run whose calls carry no names is TOOL CALLS 2
+       and nothing else; each of those steps says `(unnamed tool)` where its
+       name would be. */
   }
   if (s.tools.length) {
     // Every name that is listed is listed in full; a list too long to show says
