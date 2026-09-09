@@ -90,11 +90,17 @@ h1 {
 .tagline { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.875rem; }
 
 /* The paste box sits under the run, which on a phone is well below the fold.
-   One line above the fold says where it is, and goes there. Above 46rem the box
-   is on the first screen already, and this line — accent-coloured and
-   underlined — was then the loudest thing on the page pointing at something the
-   reader can already see. Shown only where it is needed. */
-.signpost { display: none; margin: 0.25rem 0 0; font-size: 0.8rem; }
+   One line above the fold says where it is, and goes there.
+
+   Hiding it above the breakpoint was tried and reverted: the premise was that
+   the box is on the first screen at those widths, and it is not. At a viewport
+   640px tall the TRANSCRIPT JSON label sits 654-733px down at every width from
+   737 to 1920; at 700 tall it is still below the fold at 737, 800 and 900; and
+   the Render button is below the fold at every width until the viewport is
+   about 1010px tall. A maximised window on a 1366x768 laptop has roughly 657px
+   of viewport. Whether the box is on the first screen is a question about
+   height, and a width query cannot answer it. Shown everywhere. */
+.signpost { margin: 0.25rem 0 0; font-size: 0.8rem; }
 .signpost a { color: var(--accent); text-underline-offset: 3px; }
 
 .h2-aside {
@@ -537,8 +543,6 @@ pre.value, p.value {
      nothing and left two affordances documented nowhere on a phone. It reads
      as its own line rather than trailing the buttons. */
   .hint { display: block; }
-  /* Here, and only here, the run is above the box rather than beside it. */
-  .signpost { display: block; }
   .panes { grid-template-columns: 1fr; margin-top: 0.75rem; }
 }
 
