@@ -29,12 +29,11 @@ real run.
 
 Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
 loads the same way a paste does; a file that is not text is refused by name
-rather than tipped into the paste box as bytes, and anything that fails to parse
-says which file or paste it failed on. A transcript over 400,000 characters is
+rather than tipped into the paste box as bytes, and a transcript that fails to
+parse says which file or paste it failed on. One over 400,000 characters is
 rendered without being left in the paste box — every keystroke in a box that
 long lags, and lags worse the longer it gets — and the page says so when it
-clears it.
-A paste that fails to parse is never cleared.
+clears it. A paste that fails to parse is never cleared.
 
 ## How to run
 
