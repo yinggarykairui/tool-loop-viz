@@ -18,9 +18,9 @@ so rather than guessing.
 
 It is bounded on purpose, because a transcript can be enormous: it lists the
 first 400 steps of a run, reads 200 content blocks or tool calls per message,
-keeps about 100,000 characters of any one value, lists 40 distinct tool names,
-and refuses input over 12 million characters. Whatever a cap leaves out, the
-page says so where it left it out.
+keeps about 100,000 characters of any one value, lists 40 distinct tool names
+and counts the rest, and refuses input over 12 million characters. Whatever a
+cap leaves out, the page says so where it left it out.
 
 Nothing is sent anywhere. There is no key field, no request, and no storage: the
 parsing happens in the page. It opens on a bundled example so there is a loop to
@@ -28,7 +28,12 @@ walk before you paste anything. That example is hand-written, not a capture of a
 real run.
 
 Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
-loads the same way a paste does.
+loads the same way a paste does; a file that is not text is refused by name
+rather than tipped into the paste box as bytes, and anything that fails to parse
+says which file or paste it failed on. A transcript over 100,000 characters is
+rendered without being left in the paste box — typing in a box that size costs
+about a fifth of a second a keystroke — and the page says so when it clears it.
+A paste that fails to parse is never cleared.
 
 ## How to run
 
