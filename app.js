@@ -1231,7 +1231,10 @@ function revealRun() {
   window.scrollTo({ top: top, behavior: scrollBehavior() });
 }
 
-// A failed parse must never wipe a run that is already on screen.
+/* A failed parse must never wipe a run that is already on screen. The label —
+   a file name, `Pasted`, `Bundled example` — travels on both paths: a refusal
+   that does not say what it was reading is the one message on this page that
+   leaves the reader guessing which of two things they just tried went wrong. */
 function runLoad(raw, label, extra) {
   var wasExample = nextIsExample;
   var asked = nextIsAsked || !wasExample;
@@ -1245,7 +1248,8 @@ function runLoad(raw, label, extra) {
       ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
   } catch (err) {
     var message = err && err.message ? err.message : String(err);
-    setStatus(message + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+    setStatus((label ? label + ': ' : '') + message +
+      (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
   }
 }
 
@@ -1279,13 +1283,14 @@ function loadText(raw, label, extra) {
 /* ----------------------------------------------------------------- boot ---- */
 
 document.getElementById('render-btn').addEventListener('click', function () {
-  loadText(els.input.value, 'Pasted');
+  // Nothing was pasted when the box is empty, so that refusal takes no label.
+  loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '');
 });
 
 els.input.addEventListener('keydown', function (event) {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    loadText(els.input.value, 'Pasted');
+    loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '');
   }
 });
 
@@ -1610,6 +1615,20 @@ document.addEventListener('mousedown', function () { if (!els.dropVeil.hidden) e
 document.addEventListener('click', function () { if (!els.dropVeil.hidden) endDrag(); });
 els.dropVeil.addEventListener('click', endDrag);
 
+/* `FileReader.readAsText` decodes whatever it is given as UTF-8, so a PNG comes
+   back as a page of replacement characters and NULs — which is what used to be
+   written into the paste box, for the reader to select and delete by hand. A
+   NUL cannot occur in valid JSON at all (it has to be escaped inside a string),
+   and a stray replacement character is ordinary mojibake, so one NUL is
+   decisive and replacement characters are judged by proportion. */
+var BINARY_SAMPLE = 4096;
+function looksBinary(text) {
+  var sample = text.length > BINARY_SAMPLE ? text.slice(0, BINARY_SAMPLE) : text;
+  if (sample.indexOf('\u0000') !== -1) return true;
+  var bad = sample.match(/\uFFFD/g);
+  return !!bad && bad.length > sample.length / 100;
+}
+
 window.addEventListener('drop', function (event) {
   event.preventDefault();
   endDrag();
@@ -1631,6 +1650,13 @@ window.addEventListener('drop', function (event) {
   reader.onload = function () {
     setBusy(false);
     var raw = typeof reader.result === 'string' ? reader.result : '';
+    // Refused before the box or the parser sees it: the reader dropped a file,
+    // so the answer names the file rather than a byte offset in its decoding.
+    if (looksBinary(raw)) {
+      setStatus(name + ' is not a text file: it holds bytes that are not text, so nothing was loaded. ' +
+        'Drop a .json transcript.' + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+      return;
+    }
     // A megabyte of JSON in the textarea makes every keystroke cost seconds, so
     // a big file is rendered without being pushed back into the box.
     var extra = '';
