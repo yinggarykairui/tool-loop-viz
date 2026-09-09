@@ -28,14 +28,15 @@ walk before you paste anything. That example is hand-written, not a capture of a
 real run.
 
 Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
-loads the same way a paste does; a file that looks binary — one holding the raw
-control characters a JSON transcript cannot — is refused by name rather than
-tipped into the paste box as bytes, text that is not a transcript still reaches
-the box and fails there, and whatever fails to parse says which file or paste it
-failed on. One over 400,000 characters is
-rendered without being left in the paste box — typing in a box that long slows
-every keystroke, and slows further the longer the text gets — and the page says
-so when it clears it. A paste that fails to parse is never cleared.
+loads the same way a paste does, and whatever fails to parse says which file or
+paste it failed on. A file holding raw control characters — which a JSON
+transcript cannot — is refused by name rather than tipped into the box as bytes.
+Text that is not a transcript still reaches the box and fails there. Between
+400,000 characters and the 12 million cap the text is kept out of the box: a
+paste is cleared once it has rendered, a dropped file is never copied in, and
+the status says which. Typing in a box that long slows every keystroke, and
+slows further the longer the text gets. A paste that fails to parse is never
+cleared.
 
 ## How to run
 
