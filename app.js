@@ -1245,17 +1245,18 @@ function runLoad(raw, label, extra, freeBox) {
     state.isExample = wasExample;
     var count = result.steps.length;
     /* Parity with a dropped file, which has never pushed a megabyte back into
-       the box. A paste puts it there itself, and at 2 MB every keystroke in
-       that box then costs about a fifth of a second — the box the tagline
-       invites you to use is the thing the paste breaks. Cleared only after the
-       parse succeeded, and only while the box still holds exactly what was
-       parsed: a refusal names a position in text the reader still needs, and a
-       reader can type into the box during the frame the parse runs on. */
-    if (freeBox && raw.length > BUSY_CHARS && els.input.value === raw) {
+       the box. A paste puts it there itself, and at 2 MB a keystroke in that
+       box costs 83 ms of layout here and 350 ms on a slower machine — the box
+       the tagline invites you to use is the thing the paste breaks. Cleared
+       only after the parse succeeded, and only while the box still holds
+       exactly what was parsed: a refusal names a position in text the reader
+       still needs, and a reader can type into the box during the frame the
+       parse runs on. */
+    if (freeBox && raw.length > SLOW_BOX_CHARS && els.input.value === raw) {
       els.input.value = '';
       extra = (extra ? extra + ' ' : '') + 'The ' + raw.length.toLocaleString() +
-        ' characters were cleared from the box: typing in a box that size costs about a fifth ' +
-        'of a second a keystroke. The run on screen is unaffected.';
+        ' characters were cleared from the box: every keystroke in a box that long lags, ' +
+        'and lags worse the longer it gets. The run on screen is unaffected.';
     }
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
       ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
@@ -1271,11 +1272,24 @@ function runLoad(raw, label, extra, freeBox) {
    disabled while it runs, so an impatient second click cannot queue a second
    parse on top of the first.
 
-   One number answers two questions, because they have the same answer: this is
-   the size at which the parse is worth a busy state, and the size at which the
-   box holding the same text is too slow to type in. The drop path has used it
-   for the second question since day 025; the paste path now uses it too. */
+   This number answers one question only: the size at which a parse is worth a
+   busy state. It was read as answering a second one — the size at which the
+   box holding the same text is too slow to type in — and the two answers are
+   not the same. A parse of 147,567 characters takes 10 ms and one of 2,021,167
+   takes 166 ms, so the busy state earns its place here; a keystroke at 100,000
+   characters costs 5.8 ms, which is nothing. Typing has its own curve and its
+   own constant below. */
 var BUSY_CHARS = 100000;
+
+/* The size at which the box is too slow to leave the text in. A textarea lays
+   its whole value out again on every keystroke, and the cost is linear in the
+   length. Measured on this build, median synchronous cost of one keystroke:
+   0.8 ms empty, 5.8 ms at 100,000, 13.9 ms at 300,000, 15.8 ms at 375,000,
+   17.6 ms at 400,000, 20.9 ms at 450,000, 83 ms at 2,000,000. 400,000 is where
+   the keystroke stops fitting in a 60 Hz frame and starts missing more of them
+   the longer the box gets; on a CPU throttled 4x, the same keystroke there
+   costs 90 ms. Below it the text is worth more in the box than the frame is. */
+var SLOW_BOX_CHARS = 400000;
 var busyNow = false;
 
 function setBusy(on) {
@@ -1687,10 +1701,10 @@ window.addEventListener('drop', function (event) {
         'Drop a .json transcript.' + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
       return;
     }
-    // A megabyte of JSON in the textarea makes every keystroke cost seconds, so
-    // a big file is rendered without being pushed back into the box.
+    // Past the size at which the box lags on every keystroke, a file is
+    // rendered without being pushed back into the box at all.
     var extra = '';
-    if (raw.length > BUSY_CHARS) {
+    if (raw.length > SLOW_BOX_CHARS) {
       els.input.value = '';
       extra = 'The file is ' + raw.length.toLocaleString() +
         ' characters, so it was not copied into the box; the box stays free for editing.';
