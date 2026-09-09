@@ -1235,7 +1235,7 @@ function revealRun() {
    a file name, `Pasted`, `Bundled example` — travels on both paths: a refusal
    that does not say what it was reading is the one message on this page that
    leaves the reader guessing which of two things they just tried went wrong. */
-function runLoad(raw, label, extra) {
+function runLoad(raw, label, extra, freeBox) {
   var wasExample = nextIsExample;
   var asked = nextIsAsked || !wasExample;
   nextIsExample = false;
@@ -1244,6 +1244,19 @@ function runLoad(raw, label, extra) {
     var result = parseTranscript(raw);
     state.isExample = wasExample;
     var count = result.steps.length;
+    /* Parity with a dropped file, which has never pushed a megabyte back into
+       the box. A paste puts it there itself, and at 2 MB every keystroke in
+       that box then costs about a fifth of a second — the box the tagline
+       invites you to use is the thing the paste breaks. Cleared only after the
+       parse succeeded, and only while the box still holds exactly what was
+       parsed: a refusal names a position in text the reader still needs, and a
+       reader can type into the box during the frame the parse runs on. */
+    if (freeBox && raw.length > BUSY_CHARS && els.input.value === raw) {
+      els.input.value = '';
+      extra = (extra ? extra + ' ' : '') + 'The ' + raw.length.toLocaleString() +
+        ' characters were cleared from the box: typing in a box that size costs about a fifth ' +
+        'of a second a keystroke. The run on screen is unaffected.';
+    }
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
       ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
   } catch (err) {
@@ -1253,10 +1266,15 @@ function runLoad(raw, label, extra) {
   }
 }
 
-// Parsing a multi-megabyte transcript blocks the thread for seconds. The busy
-// state is painted first and the work runs on the next frame; the controls are
-// disabled while it runs, so an impatient second click cannot queue a second
-// parse on top of the first.
+/* Parsing a multi-megabyte transcript blocks the thread for seconds. The busy
+   state is painted first and the work runs on the next frame; the controls are
+   disabled while it runs, so an impatient second click cannot queue a second
+   parse on top of the first.
+
+   One number answers two questions, because they have the same answer: this is
+   the size at which the parse is worth a busy state, and the size at which the
+   box holding the same text is too slow to type in. The drop path has used it
+   for the second question since day 025; the paste path now uses it too. */
 var BUSY_CHARS = 100000;
 var busyNow = false;
 
@@ -1268,14 +1286,15 @@ function setBusy(on) {
   els.status.classList.toggle('busy', on);
 }
 
-function loadText(raw, label, extra) {
+// `freeBox` marks the loads that start from text already sitting in the box.
+function loadText(raw, label, extra, freeBox) {
   if (busyNow) return;
-  if (typeof raw !== 'string' || raw.length <= BUSY_CHARS) { runLoad(raw, label, extra); return; }
+  if (typeof raw !== 'string' || raw.length <= BUSY_CHARS) { runLoad(raw, label, extra, freeBox); return; }
   setBusy(true);
   setStatus('Reading ' + (label || 'input') + ' — ' + raw.length.toLocaleString() + ' characters…', false);
   requestAnimationFrame(function () {
     setTimeout(function () {
-      try { runLoad(raw, label, extra); } finally { setBusy(false); }
+      try { runLoad(raw, label, extra, freeBox); } finally { setBusy(false); }
     }, 0);
   });
 }
@@ -1284,13 +1303,13 @@ function loadText(raw, label, extra) {
 
 document.getElementById('render-btn').addEventListener('click', function () {
   // Nothing was pasted when the box is empty, so that refusal takes no label.
-  loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '');
+  loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '', '', true);
 });
 
 els.input.addEventListener('keydown', function (event) {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '');
+    loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '', '', true);
   }
 });
 
@@ -1635,7 +1654,7 @@ window.addEventListener('drop', function (event) {
   var files = event.dataTransfer && event.dataTransfer.files;
   if (!files || !files.length) {
     var text = event.dataTransfer && event.dataTransfer.getData('text');
-    if (text) { els.input.value = text; loadText(text, 'Dropped text'); }
+    if (text) { els.input.value = text; loadText(text, 'Dropped text', '', true); }
     return;
   }
   var file = files[0];
