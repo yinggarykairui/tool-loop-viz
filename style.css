@@ -90,8 +90,11 @@ h1 {
 .tagline { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.875rem; }
 
 /* The paste box sits under the run, which on a phone is well below the fold.
-   One line above the fold says where it is, and goes there. */
-.signpost { margin: 0.25rem 0 0; font-size: 0.8rem; }
+   One line above the fold says where it is, and goes there. Above 46rem the box
+   is on the first screen already, and this line — accent-coloured and
+   underlined — was then the loudest thing on the page pointing at something the
+   reader can already see. Shown only where it is needed. */
+.signpost { display: none; margin: 0.25rem 0 0; font-size: 0.8rem; }
 .signpost a { color: var(--accent); text-underline-offset: 3px; }
 
 .h2-aside {
@@ -286,12 +289,21 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 .run-notes[hidden] { display: none; }
 .run-notes .note { margin: 0.25rem 0 0; max-width: 60rem; }
 
-/* Continuous layout: one column until the container can hold two 20rem tracks,
-   then two. No hand-picked breakpoint to be wrong about. */
+/* One breakpoint, and it governs the whole page. The columns used to be
+   container-driven (`auto-fit` over `minmax(min(100%, 20rem), 1fr)`) while the
+   rules at the foot of this file and the script's `NARROW` were viewport-driven
+   at 46rem. The two agreed nowhere in particular: for a viewport W the padding
+   and gap are both 3vw, so two tracks appear once 640 <= 0.91W — from 704px up.
+   Between there and 736px the grid had already split while the narrow rules
+   still ran, so the timeline gave up 168px of height beside a column that was
+   already there, and `revealPair` — whose premise is that at this width the
+   detail sits *under* the list — scrolled the window for a pane sitting next to
+   the row. The script cannot read a container query, so the layout follows the
+   script's breakpoint rather than the other way round. */
 .panes {
   display: grid;
   gap: clamp(1rem, 3vw, 2rem);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  grid-template-columns: 1fr 1fr;
   margin-top: 1.5rem;
   align-items: start;
 }
@@ -525,7 +537,9 @@ pre.value, p.value {
      nothing and left two affordances documented nowhere on a phone. It reads
      as its own line rather than trailing the buttons. */
   .hint { display: block; }
-  .panes { margin-top: 0.75rem; }
+  /* Here, and only here, the run is above the box rather than beside it. */
+  .signpost { display: block; }
+  .panes { grid-template-columns: 1fr; margin-top: 0.75rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
