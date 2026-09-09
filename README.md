@@ -33,10 +33,9 @@ paste it failed on. A file holding raw control characters — which a JSON
 transcript cannot — is refused by name rather than tipped into the box as bytes.
 Text that is not a transcript still reaches the box and fails there. Between
 400,000 characters and the 12 million cap the text is kept out of the box: a
-paste is cleared once it has rendered, a dropped file is never copied in, and
-the status says which. Typing in a box that long slows every keystroke, and
-slows further the longer the text gets. A paste that fails to parse is never
-cleared.
+paste is cleared once it has rendered, and a dropped file is never copied in.
+Typing in a box that long slows every keystroke, and slows further the longer
+the text gets. A paste that fails to parse is never cleared.
 
 ## How to run
 
