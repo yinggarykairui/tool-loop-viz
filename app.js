@@ -1730,8 +1730,9 @@ window.addEventListener('drop', function (event) {
     // Refused before the box or the parser sees it: the reader dropped a file,
     // so the answer names the file rather than a byte offset in its decoding.
     if (looksBinary(raw)) {
-      setStatus(name + ' has a zero byte in it, so it is not text and nothing was loaded. ' +
-        'Drop a .json transcript.' + (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+      setStatus(name + ' does not look like a text file, so nothing was loaded. ' +
+        'Drop a .json transcript instead.' +
+        (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
       return;
     }
     // Past the size at which the box lags on every keystroke, a file is
