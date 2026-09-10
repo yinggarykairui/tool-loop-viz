@@ -23,8 +23,11 @@
 
   <div class="panes">
     <section class="pane">
-      <h2 id="timeline-heading">Timeline <span class="h2-aside">&#8593;&#8595; Home End walk it</span></h2>
-      <ul class="timeline" id="timeline" role="listbox" aria-labelledby="timeline-heading" tabindex="-1"></ul>
+      <!-- The aside is a key hint for the eye, not part of the list's name: labelled
+           by the whole h2, the listbox announced as "Timeline up-arrow down-arrow Home
+           End walk it, listbox". The keys are still in the hint under the paste box. -->
+      <h2 id="timeline-heading">Timeline <span class="h2-aside" aria-hidden="true">&#8593;&#8595; Home End walk it</span></h2>
+      <ul class="timeline" id="timeline" role="listbox" aria-label="Timeline" tabindex="-1"></ul>
       <p class="note" id="timeline-note" hidden></p>
     </section>
     <section class="pane" aria-labelledby="detail-heading">

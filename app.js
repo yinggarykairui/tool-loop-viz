@@ -1613,6 +1613,10 @@ function renderSummary() {
        gone, hiding it on open would leave a desktop, which opens the disclosure
        by default, with no tool count anywhere on the strip. */
     head.appendChild(el('span', 'tools-count', String(distinct)));
+    /* Named outright rather than from its contents: the gap before the count is
+       CSS, so the computed name ran the label into the number, and the caret
+       drawn by summary::after was read out as part of it too. */
+    head.setAttribute('aria-label', 'Tools used: ' + distinct);
     // A title that said "Show the 40 tool names" while showing 40 of 45, and
     // said "Show" while already open, was two small lies in one attribute. It
     // now has both numbers to keep straight.
