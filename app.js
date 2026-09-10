@@ -1528,11 +1528,14 @@ var NARROW = window.matchMedia('(max-width: 43.99rem)');
    704px the list opened by default, and between 704 and 760 that gave the page
    its tallest summary strip anywhere — taller than the 320px phone's, with
    FORMAT orphaned on a row of its own. Measured at 720x800, as strip height /
-   strip rows / document height / timeline top / rows visible: 148 / 2 / 1144 /
-   381 / 5 before, 57 / 1 / 1053 / 291 / 6 after, and the TRANSCRIPT JSON label
-   comes up from y=843 to y=752, onto the first screen. Free at both ends: 320
-   goes 111px over four rows to 87 over three, and 700 goes 87 over three to 64
-   over two. 800 and 1280 do not move at all. */
+   strip rows / document height / timeline top: 148 / 2 / 1144 / 381 before,
+   57 / 1 / 1053 / 291 after, and the TRANSCRIPT JSON label comes up from
+   y=843 to y=752, onto the first screen. The list holds no more rows for it:
+   its max-height is 440px on both sides, so it shows five whole rows and part
+   of a sixth either way. What a shorter strip buys is 90px of page, not a
+   sixth row. Free at both ends: 320 goes 111px over four rows to 87 over
+   three, and 700 goes 87 over three to 64 over two. 800 and 1280 do not move
+   at all. */
 var TOOLS_OPEN = window.matchMedia('(min-width: 48rem)');
 function syncToolsDisclosure() {
   var box = document.querySelector('.tools-disclosure');
