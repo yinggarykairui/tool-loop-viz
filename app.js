@@ -892,12 +892,15 @@ function el(tag, className, text) {
 
 function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
-function setStatus(message, isError) {
+// `transient` marks a line that describes work still in flight. Such a line is
+// shown but never kept: restoring it later would announce a read that either
+// finished or was refused several actions ago.
+function setStatus(message, isError, transient) {
   els.status.textContent = message;
   els.status.classList.toggle('error', !!isError);
   // The last thing that went right, kept so a stale refusal can be replaced by
   // it rather than sitting in red over actions that then worked.
-  if (!isError) state.statusLine = message;
+  if (!isError && !transient) state.statusLine = message;
 }
 
 function formatTime(ms) {
@@ -1319,7 +1322,7 @@ function loadText(raw, label, extra, freeBox) {
   if (busyNow) return;
   if (typeof raw !== 'string' || raw.length <= BUSY_CHARS) { runLoad(raw, label, extra, freeBox); return; }
   setBusy(true);
-  setStatus('Reading ' + (label || 'input') + ' — ' + raw.length.toLocaleString() + ' characters…', false);
+  setStatus('Reading ' + (label || 'input') + ' — ' + raw.length.toLocaleString() + ' characters…', false, true);
   requestAnimationFrame(function () {
     setTimeout(function () {
       try { runLoad(raw, label, extra, freeBox); } finally { setBusy(false); }
@@ -1733,7 +1736,7 @@ window.addEventListener('drop', function (event) {
   var name = firstLine(file.name, 60);
   var reader = new FileReader();
   setBusy(true);
-  setStatus('Reading ' + name + '…', false);
+  setStatus('Reading ' + name + '…', false, true);
   reader.onerror = function () {
     setBusy(false);
     setStatus('Could not read ' + name + '.', true);
