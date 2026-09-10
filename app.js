@@ -1768,24 +1768,49 @@ function looksBinary(text) {
   return BINARY_CONTROL.test(text);
 }
 
+/* Every drop answers. This is the one surface with no button to disable and no
+   field to leave a value in, so a drop that goes nowhere leaves the page byte
+   for byte as it was — which reads as the page not having seen it. Each of the
+   three ways a drop can end without a run now names what was dropped and why
+   nothing happened, and each goes out through revealStatus() so the line is on
+   screen rather than below the fold. */
 window.addEventListener('drop', function (event) {
   event.preventDefault();
   endDrag();
+  var files = event.dataTransfer && event.dataTransfer.files;
   /* The same guard loadText opens with, and for the same reason. A drop is not
      a control, so disabling the buttons never covered it: two files dropped
      inside one read let the slower file's answer land on top of the faster
      file's run, in red, saying the run already on screen was unchanged when it
      had just been replaced. Whichever read is in flight finishes and answers;
-     a second drop during it is ignored. */
-  if (busyNow) return;
-  var files = event.dataTransfer && event.dataTransfer.files;
+     a second drop during it is refused by name. That refusal stands only until
+     the load in flight prints its own answer, which is the whole of what the
+     page has to say about the two of them. */
+  if (busyNow) {
+    setStatus((files && files.length ? firstLine(files[0].name, 60) : 'That drop') +
+      ' was not read: the page is still busy with the last one. Drop it again once ' +
+      'the run is on screen.', true);
+    revealStatus();
+    return;
+  }
   if (!files || !files.length) {
     var text = event.dataTransfer && event.dataTransfer.getData('text');
-    if (text) { els.input.value = text; loadText(text, 'Dropped text', '', true); }
+    if (text) { els.input.value = text; loadText(text, 'Dropped text', '', true); return; }
+    // A link dragged from another tab carries a URL and no text, and this page
+    // cannot fetch: it runs from file://, where there is no network at all.
+    setStatus('That drop carried no file and no text, so nothing was loaded. ' +
+      'Drop a .json transcript, or paste one into the box.' +
+      (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+    revealStatus();
     return;
   }
   var file = files[0];
-  var name = firstLine(file.name, 60);
+  /* Still the first file only; the rest are #124's to fix. But the label rides
+     on every sentence this path can print — the progress line, the read error,
+     the binary refusal, the parse error and the run itself — so saying it here
+     says it everywhere, and costs one expression. */
+  var name = firstLine(file.name, 60) +
+    (files.length > 1 ? ' (first of ' + files.length + ' dropped, the rest ignored)' : '');
   var reader = new FileReader();
   setBusy(true);
   setStatus('Reading ' + name + '…', false, true);
