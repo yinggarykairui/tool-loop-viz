@@ -1511,12 +1511,35 @@ var TOOL_LIST_MAX = 40;
    reader who has toggled it by hand keeps their choice until the width changes
    under them. */
 var NARROW = window.matchMedia('(max-width: 43.99rem)');
+
+/* Whether the tool-name list starts open is a question about density, not about
+   layout. The page still has exactly ONE layout breakpoint, 43.99rem: it is the
+   only width at which the grid changes track count, at which the timeline
+   changes max-height, and at which revealPair changes its premise, and NARROW
+   above is still the only thing that reads it. 48rem is not a second one — no
+   CSS rule keys off it, no track and no max-height moves at it. It sets one
+   <details> element's `open` attribute and nothing else.
+
+   Nothing below the strip moves at 48rem that does not move whenever a reader
+   folds the list by hand at any other width: the strip is shorter, so what
+   follows it starts higher. That is content height, not a layout rule.
+
+   It is here because 43.99rem was the wrong width for this one control. From
+   704px the list opened by default, and between 704 and 760 that gave the page
+   its tallest summary strip anywhere — taller than the 320px phone's, with
+   FORMAT orphaned on a row of its own. Measured at 720x800, as strip height /
+   strip rows / document height / timeline top / rows visible: 148 / 2 / 1144 /
+   381 / 5 before, 57 / 1 / 1053 / 291 / 6 after, and the TRANSCRIPT JSON label
+   comes up from y=843 to y=752, onto the first screen. Free at both ends: 320
+   goes 111px over four rows to 87 over three, and 700 goes 87 over three to 64
+   over two. 800 and 1280 do not move at all. */
+var TOOLS_OPEN = window.matchMedia('(min-width: 48rem)');
 function syncToolsDisclosure() {
   var box = document.querySelector('.tools-disclosure');
-  if (box) box.open = !NARROW.matches;
+  if (box) box.open = TOOLS_OPEN.matches;
 }
-if (NARROW.addEventListener) NARROW.addEventListener('change', syncToolsDisclosure);
-else if (NARROW.addListener) NARROW.addListener(syncToolsDisclosure);
+if (TOOLS_OPEN.addEventListener) TOOLS_OPEN.addEventListener('change', syncToolsDisclosure);
+else if (TOOLS_OPEN.addListener) TOOLS_OPEN.addListener(syncToolsDisclosure);
 
 function summarise(steps) {
   var tools = [];
@@ -1650,7 +1673,7 @@ function renderSummary() {
     // this function is about to discard can outlive it and write back a stale
     // answer. Only a width change overrules the reader, because the default is
     // a fact about the width.
-    box.open = openBefore === null ? !NARROW.matches : openBefore;
+    box.open = openBefore === null ? TOOLS_OPEN.matches : openBefore;
     wrap.appendChild(box);
     els.summary.appendChild(wrap);
   }

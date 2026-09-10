@@ -258,6 +258,11 @@ button.link:hover:not([disabled]) { background: none; color: var(--ink); }
 .summary .metric { display: flex; flex-direction: column; min-width: 0; }
 /* The tool list wraps and is never cut mid-identifier. */
 .summary .metric-tools { flex: 1 1 18rem; }
+/* A folded disclosure is one short line and has nothing to grow into, so it
+   should not take the leftover width: growing it is what pushed FORMAT onto a
+   row of its own between 704 and 760px. Where `:has()` is unsupported the whole
+   rule is dropped and the strip is exactly what it was. */
+.summary .metric-tools:has(.tools-disclosure:not([open])) { flex: 0 1 auto; }
 .summary .metric-tools .metric-value { white-space: normal; overflow-wrap: anywhere; }
 .tools-disclosure { min-width: 0; }
 .tools-disclosure > summary {
