@@ -1284,7 +1284,7 @@ function runLoad(raw, label, extra, freeBox) {
       els.input.value = '';
       extra = (extra ? extra + ' ' : '') + 'The ' + raw.length.toLocaleString() +
         ' characters were cleared from the box: typing in a box that long slows every ' +
-        'keystroke, and slows further the longer the text gets. The run on screen is unaffected.';
+        'keystroke, and slows further the longer the text gets.';
     }
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
       ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
