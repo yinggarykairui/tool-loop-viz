@@ -414,13 +414,15 @@ function linkSteps(steps) {
   return steps;
 }
 
-/* A tool name is untrusted text like any other, so it goes through the same
-   escaping every other title gets: left raw, one U+202E in a name reorders the
-   rest of the row and prints a file the transcript never mentions. */
+/* A tool name is untrusted text like any other, so it takes the same treatment
+   every other title gets — escaped, folded to one line, and cut at
+   LIMITS.title. Left raw, one U+202E in a name reorders the rest of the row and
+   prints a file the transcript never mentions, and a 5,000-character name gives
+   a 5,000-character row. */
 function defaultTitle(step) {
-  if (step.kind === 'tool-call') return step.toolName ? displayText(step.toolName) : '(unnamed tool)';
+  if (step.kind === 'tool-call') return step.toolName ? firstLine(step.toolName, LIMITS.title) : '(unnamed tool)';
   if (step.kind === 'tool-result') {
-    var name = step.toolName ? displayText(step.toolName) : 'unmatched call';
+    var name = step.toolName ? firstLine(step.toolName, LIMITS.title) : 'unmatched call';
     return (step.isError ? 'error from ' : 'from ') + name;
   }
   if (step.text !== undefined) return firstLine(step.text) || '(empty)';
@@ -1570,12 +1572,15 @@ function renderSummary() {
        name would be. */
   }
   if (s.tools.length) {
-    // Every name that is listed is listed in full; a list too long to show says
-    // how many it is not showing, rather than ending mid-identifier.
-    // Escaped here rather than in summarise(): `seen` keys on the name the log
-    // actually carried, so two names differing only in a control character
-    // stay two distinct tools.
-    var names = s.tools.map(displayText).join(', ');
+    /* A list too long to show says how many it is not showing, rather than
+       ending mid-identifier. One name too long to show is cut at the same
+       LIMITS.title every row title takes: a 5,000-character name ran this strip
+       to 1,363px at 1280x800 and pushed the whole timeline below the fold, and
+       nothing that long is an identifier anyone reads off a summary anyway.
+       Escaped here rather than in summarise(): `seen` keys on the name the log
+       actually carried, so two names differing only in a control character
+       stay two distinct tools. */
+    var names = s.tools.map(function (n) { return firstLine(n, LIMITS.title); }).join(', ');
     if (s.distinct > s.tools.length) names += ', and ' + (s.distinct - s.tools.length) + ' more';
     toolsMetric(names, s.tools.length, s.distinct);
   }
