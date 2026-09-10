@@ -1295,8 +1295,19 @@ function runLoad(raw, label, extra, freeBox) {
         ' characters were cleared from the box: typing in a box that long slows every ' +
         'keystroke, and slows further the longer the text gets.';
     }
+    /* `extra` reaches this line on exactly two loads, and both report the same
+       thing: the reader's box is empty on purpose, either cleared after the
+       parse or never written to. That is a side-effect nobody asked for,
+       printed in the faintest ink on the page, and it was the last message here
+       that did not put itself on screen. It is revealed *instead of* the run,
+       not after it: revealRun's smooth scroll is still in flight when the next
+       line measures, so a status that is on screen at this instant — which it
+       is whenever the reader just clicked Render — would read as needing no
+       reveal and then be carried off screen by the scroll already running. An
+       ordinary success is untouched: it has nothing to say the run does not. */
     showRun(result, (label ? label + ': ' : '') + count + (count === 1 ? ' step' : ' steps') +
-      ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked);
+      ', read as ' + result.dialect + '.' + (extra ? ' ' + extra : ''), asked && !extra);
+    if (extra) revealStatus();
   } catch (err) {
     var message = err && err.message ? err.message : String(err);
     setStatus((label ? label + ': ' : '') + message +
