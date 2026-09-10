@@ -11,7 +11,7 @@
      so every traversal is depth-, count- and character-bounded. */
 
 var LIMITS = {
-  input: 12e6,     // characters accepted before we refuse outright
+  input: 12e6,     // characters accepted before the input is refused outright
   steps: 400,      // steps rendered; any beyond are counted and reported
   depth: 12,       // nesting levels formatted before eliding
   items: 200,      // array items / object keys formatted per level
@@ -175,7 +175,7 @@ function isPlainObject(v) { return v !== null && typeof v === 'object' && !Array
 // different elapsed on every machine, and "August 17" becomes this year.
 var TIME_KEYS = ['timestamp', 'time', 'ts', 'created_at', 'createdAt', 'started_at'];
 
-// 1990-01-01 .. 2100-01-01. Outside this a value is not a time we believe.
+// 1990-01-01 .. 2100-01-01. Outside this a value is not a believable time.
 var TIME_MIN_MS = 631152000000;
 var TIME_MAX_MS = 4102444800000;
 
@@ -221,8 +221,9 @@ function readTimestamp(obj) {
   return null;
 }
 
-// Ids and tool names are strings in every dialect we read, but logs written by
-// hand carry numbers. Coerced, so pairing works and the name is shown as logged.
+// Ids and tool names are strings in every dialect this page reads, but logs
+// written by hand carry numbers. Coerced, so pairing works and the name is
+// shown as logged.
 function readId(value) {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' && isFinite(value)) return String(value);
@@ -554,8 +555,8 @@ var INPUT_KEYS = ['input', 'arguments', 'args', 'parameters', 'params', 'tool_in
 var OUTPUT_KEYS = ['result', 'output', 'observation', 'response', 'content', 'text', 'message'];
 var ID_KEYS = ['tool_use_id', 'tool_call_id', 'call_id', 'id'];
 
-// Best effort for logs in no dialect we know: recognise something rather than
-// refusing the file.
+// Best effort for logs in none of the known dialects: recognise something
+// rather than refusing the file.
 function parseGeneric(entries) {
   var steps = [];
   for (var i = 0; i < entries.length; i++) {
