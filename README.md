@@ -16,16 +16,22 @@ of step objects. Where a log carries the ids to match them by, tool results
 are paired with the call that produced them; where it does not, the step says
 so rather than guessing.
 
+Nothing is sent anywhere. There is no key field, no request, and no storage: the
+parsing happens in the page. It opens on a bundled example so there is a loop to
+walk before you paste anything. That example is hand-written, not a capture of a
+real run.
+
+## How to run
+
+Open `index.html`. There is no build step and no server.
+
+## Limits and input handling
+
 It is bounded on purpose, because a transcript can be enormous: it lists the
 first 400 steps of a run, reads 200 content blocks or tool calls per message,
 keeps about 100,000 characters of any one value, lists 40 distinct tool names
 and counts the rest, and refuses input over 12 million characters. Whatever a
 cap leaves out, the page says so where it left it out.
-
-Nothing is sent anywhere. There is no key field, no request, and no storage: the
-parsing happens in the page. It opens on a bundled example so there is a loop to
-walk before you paste anything. That example is hand-written, not a capture of a
-real run.
 
 Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
 loads the same way a paste does, and a transcript that fails to parse says which
@@ -36,10 +42,6 @@ Text that is not a transcript still reaches the box and fails there. Over
 a paste is cleared once it has rendered, and a dropped file is never copied in.
 Typing in a box that long slows every keystroke, and slows further the longer
 the text gets. A paste that fails to parse is never cleared.
-
-## How to run
-
-Open `index.html`. There is no build step and no server.
 
 ## Why it exists
 
