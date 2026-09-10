@@ -566,7 +566,11 @@ pre.value, p.value {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  /* The pseudo-elements too: `*` alone does not match them, and the caret on
+     the tools disclosure is drawn by summary::after, so its 120ms rotation
+     went on running under reduce — on a control that is now folded by default
+     below 48rem and toggled at more widths than it used to be. */
+  *, *::before, *::after { transition: none !important; }
   .status.busy::before { animation: none; opacity: 1; }
   html { scroll-behavior: auto; }
 }
