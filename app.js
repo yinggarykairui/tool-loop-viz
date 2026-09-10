@@ -1385,11 +1385,20 @@ els.input.addEventListener('keydown', function (event) {
    Bound on the document, not on the list: on a cold load the active element is
    the body, so keys advertised on the page did nothing until you clicked a row
    or tabbed three times. Typing and Tab order are untouched — keystrokes aimed
-   at a field or a button are left alone, as are modified keys. */
+   at a field are left alone, as are modified keys.
+
+   A button is not one of those. No button on this page does anything with an
+   arrow key, with Home or with End, so listing `button` here only took the
+   walk away from Render, Load example, the Errors count, `Go to result at
+   step N` and the value toggle — every control the reader reaches while
+   reading a run. `<summary>` was never in the list, so the arrows already
+   walked from the tools disclosure and the page contradicted itself. `a` stays:
+   Home and End on the signpost link are the document's own scroll, and it is
+   the one link here. */
 function takesOwnKeys(target) {
   if (!target || !target.tagName) return false;
   var tag = target.tagName.toLowerCase();
-  if (tag === 'textarea' || tag === 'input' || tag === 'select' || tag === 'button' || tag === 'a') return true;
+  if (tag === 'textarea' || tag === 'input' || tag === 'select' || tag === 'a') return true;
   return target.isContentEditable === true;
 }
 
