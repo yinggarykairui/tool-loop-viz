@@ -1372,11 +1372,17 @@ document.getElementById('render-btn').addEventListener('click', function () {
   loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '', '', true);
 });
 
-els.input.addEventListener('keydown', function (event) {
-  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault();
-    loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '', '', true);
-  }
+/* Bound at the document, like the arrow keys and for the same reason. Bound to
+   the box, the second of the two shortcuts the hint advertises without
+   qualification was dead from the body, the timeline, a timeline row, both
+   buttons and the signpost link — which is every place the reader stands after
+   a render, and the box is the one place they have just left. Refused while a
+   parse is running, the way loadText refuses. */
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return;
+  if (busyNow) return;
+  event.preventDefault();
+  loadText(els.input.value, els.input.value.trim() ? 'Pasted' : '', '', true);
 });
 
 /* Listbox keys. Selection follows focus, which is the pattern a single-select
