@@ -414,10 +414,13 @@ function linkSteps(steps) {
   return steps;
 }
 
+/* A tool name is untrusted text like any other, so it goes through the same
+   escaping every other title gets: left raw, one U+202E in a name reorders the
+   rest of the row and prints a file the transcript never mentions. */
 function defaultTitle(step) {
-  if (step.kind === 'tool-call') return step.toolName || '(unnamed tool)';
+  if (step.kind === 'tool-call') return step.toolName ? displayText(step.toolName) : '(unnamed tool)';
   if (step.kind === 'tool-result') {
-    var name = step.toolName ? step.toolName : 'unmatched call';
+    var name = step.toolName ? displayText(step.toolName) : 'unmatched call';
     return (step.isError ? 'error from ' : 'from ') + name;
   }
   if (step.text !== undefined) return firstLine(step.text) || '(empty)';
@@ -1546,7 +1549,10 @@ function renderSummary() {
   if (s.tools.length) {
     // Every name that is listed is listed in full; a list too long to show says
     // how many it is not showing, rather than ending mid-identifier.
-    var names = s.tools.join(', ');
+    // Escaped here rather than in summarise(): `seen` keys on the name the log
+    // actually carried, so two names differing only in a control character
+    // stay two distinct tools.
+    var names = s.tools.map(displayText).join(', ');
     if (s.distinct > s.tools.length) names += ', and ' + (s.distinct - s.tools.length) + ' more';
     toolsMetric(names, s.tools.length, s.distinct);
   }
