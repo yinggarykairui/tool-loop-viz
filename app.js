@@ -1393,18 +1393,25 @@ document.addEventListener('keydown', function (event) {
    or tabbed three times. Typing and Tab order are untouched — keystrokes aimed
    at a field are left alone, as are modified keys.
 
-   A button is not one of those. No button on this page does anything with an
-   arrow key, with Home or with End, so listing `button` here only took the
-   walk away from Render, Load example, the Errors count, `Go to result at
-   step N` and the value toggle — every control the reader reaches while
-   reading a run. `<summary>` was never in the list, so the arrows already
-   walked from the tools disclosure and the page contradicted itself. `a` stays:
-   Home and End on the signpost link are the document's own scroll, and it is
-   the one link here. */
+   A button is not one of those. Render, Load example, the Errors count and
+   `Go to result at step N` are all navigation, and none of them does anything
+   with an arrow key, with Home or with End, so listing `button` here only took
+   the walk away from the controls the reader reaches while reading a run.
+   `<summary>` was never in the list, so the arrows already walked from the
+   tools disclosure and the page contradicted itself. `a` stays: Home and End
+   on the signpost link are the document's own scroll, and it is the one link
+   here.
+
+   The value toggle is the exception, by name. It is the one control that sits
+   inside the thing being read rather than moving the reader somewhere else,
+   and ArrowDown is the natural key for a scrolling box. Walking the timeline
+   from it re-rendered the detail pane and threw away the expansion the reader
+   had just asked for. */
 function takesOwnKeys(target) {
   if (!target || !target.tagName) return false;
   var tag = target.tagName.toLowerCase();
   if (tag === 'textarea' || tag === 'input' || tag === 'select' || tag === 'a') return true;
+  if (target.classList && target.classList.contains('value-toggle')) return true;
   return target.isContentEditable === true;
 }
 
