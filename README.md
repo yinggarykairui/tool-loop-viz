@@ -28,8 +28,8 @@ walk before you paste anything. That example is hand-written, not a capture of a
 real run.
 
 Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
-loads the same way a paste does, and whatever fails to parse says which file or
-paste it failed on. A file holding raw control characters — which a JSON
+loads the same way a paste does, and a transcript that fails to parse says which
+file or paste it failed on. A file holding raw control characters — which a JSON
 transcript cannot — is refused by name rather than tipped into the box as bytes.
 Text that is not a transcript still reaches the box and fails there. Between
 400,000 characters and the 12 million cap the text is kept out of the box: a
