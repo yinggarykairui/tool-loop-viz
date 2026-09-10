@@ -18,9 +18,9 @@ var LIMITS = {
   /* Source characters of any one value that get formatted. Not a DOM budget:
      displayText then expands every control, zero-width and bidi character to a
      six-character \uXXXX escape, so a value built of them lands in the DOM six
-     times this size. Measured on this build: 600,132 DOM characters for a
-     150,000-character value of U+200B, and 124,797 for a 141,000-character
-     ANSI build log. */
+     times this size. Measured on this build, counting the <pre> that holds the
+     value: 600,000 characters for a 150,000-character value of U+200B, and
+     124,665 for a 141,000-character ANSI build log. */
   value: 100000,
   title: 160       // characters of a one-line list title
 };
