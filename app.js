@@ -1755,6 +1755,13 @@ function looksBinary(text) {
 window.addEventListener('drop', function (event) {
   event.preventDefault();
   endDrag();
+  /* The same guard loadText opens with, and for the same reason. A drop is not
+     a control, so disabling the buttons never covered it: two files dropped
+     inside one read let the slower file's answer land on top of the faster
+     file's run, in red, saying the run already on screen was unchanged when it
+     had just been replaced. Whichever read is in flight finishes and answers;
+     a second drop during it is ignored. */
+  if (busyNow) return;
   var files = event.dataTransfer && event.dataTransfer.files;
   if (!files || !files.length) {
     var text = event.dataTransfer && event.dataTransfer.getData('text');
