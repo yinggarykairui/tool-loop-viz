@@ -1237,6 +1237,28 @@ function revealRun() {
   window.scrollTo({ top: top, behavior: scrollBehavior() });
 }
 
+/* A refusal is an answer, and it needs to be on screen to be one. A refused
+   drop changes nothing but the status line, and that line sits below the fold
+   on every viewport measured — 135px at 1280x800, 199 at 1366x657, 285 at
+   390x844, 530 at 320x568 — so the page a file had just been dropped on looked
+   byte-identical to the page before the drop. A drop that succeeds reaches
+   revealRun; this is the same courtesy for the drops that do not.
+
+   The line is brought to the foot of the viewport rather than to its top: it is
+   the last thing in the input panel, and pinning it to the top would show
+   little else. Nothing moves while it is already on screen. */
+function revealStatus() {
+  if (!els.status) return;
+  var vh = window.innerHeight;
+  var r = els.status.getBoundingClientRect();
+  if (r.top >= 0 && r.bottom <= vh) return;
+  var top = Math.max(0, r.bottom + window.pageYOffset - vh + 24);
+  if (Math.abs(top - window.pageYOffset) < 8) return;
+  revealTarget = top;
+  revealAsked = Date.now();
+  window.scrollTo({ top: top, behavior: scrollBehavior() });
+}
+
 /* A failed parse must never wipe a run that is already on screen. The label —
    a file name, `Pasted`, `Bundled example` — travels on both paths: a refusal
    that does not say what it was reading is the one message on this page that
@@ -1270,6 +1292,7 @@ function runLoad(raw, label, extra, freeBox) {
     var message = err && err.message ? err.message : String(err);
     setStatus((label ? label + ': ' : '') + message +
       (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+    revealStatus();
   }
 }
 
@@ -1746,6 +1769,7 @@ window.addEventListener('drop', function (event) {
   reader.onerror = function () {
     setBusy(false);
     setStatus('Could not read ' + name + '.', true);
+    revealStatus();
   };
   reader.onload = function () {
     setBusy(false);
@@ -1756,6 +1780,7 @@ window.addEventListener('drop', function (event) {
       setStatus(name + ' does not look like a text file, so nothing was loaded. ' +
         'Drop a .json transcript instead.' +
         (state.steps.length ? ' The run already on screen is unchanged.' : ''), true);
+      revealStatus();
       return;
     }
     // Past the size at which the box slows every keystroke, a file is rendered
