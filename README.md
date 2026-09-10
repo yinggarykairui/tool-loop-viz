@@ -31,9 +31,9 @@ Arrow keys, Home and End walk the timeline. A `.json` file dropped on the page
 loads the same way a paste does, and a transcript that fails to parse says which
 file or paste it failed on. A file holding raw control characters — which a JSON
 transcript cannot — is refused by name rather than tipped into the box as bytes.
-Text that is not a transcript still reaches the box and fails there. Between
-400,000 characters and the 12 million cap the text is kept out of the box: a
-paste is cleared once it has rendered, and a dropped file is never copied in.
+Text that is not a transcript still reaches the box and fails there. Over
+400,000 characters, up to the 12 million cap, the text is kept out of the box:
+a paste is cleared once it has rendered, and a dropped file is never copied in.
 Typing in a box that long slows every keystroke, and slows further the longer
 the text gets. A paste that fails to parse is never cleared.
 
